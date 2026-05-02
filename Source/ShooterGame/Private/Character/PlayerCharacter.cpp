@@ -85,111 +85,6 @@ void APlayerCharacter::Look(const FVector2D& InputValue)
 	AddControllerPitchInput(PitchInput);
 }
 
-void APlayerCharacter::StartFireInput()
-{
-	if (IsDead()) return;
-	if (CombatComponent != nullptr && CombatComponent->StartFireInput())
-	{
-		OnFireInputStarted();
-	}
-}
-
-void APlayerCharacter::StopFireInput()
-{
-	if (IsDead()) return;
-	if (CombatComponent != nullptr && CombatComponent->StopFireInput())
-	{
-		OnFireInputStopped();
-	}
-}
-
-void APlayerCharacter::StartJumpInput()
-{
-	if (IsDead()) return;
-	Jump();
-}
-
-void APlayerCharacter::StopJumpInput()
-{
-	if (IsDead()) return;
-	StopJumping();
-}
-
-void APlayerCharacter::StartAimInput()
-{
-	if (IsDead()) return;
-	if (MovementStateComponent != nullptr && MovementStateComponent->IsSprinting())
-	{
-		MovementStateComponent->StopSprintInput();
-	}
-
-	if (CombatComponent != nullptr)
-	{
-		CombatComponent->StartAimInput();
-	}
-}
-
-void APlayerCharacter::StopAimInput()
-{
-	if (IsDead()) return;
-	if (CombatComponent != nullptr)
-	{
-		CombatComponent->StopAimInput();
-	}
-}
-
-void APlayerCharacter::StartCrouchInput()
-{
-	if (IsDead()) return;
-	if (MovementStateComponent != nullptr && MovementStateComponent->IsSprinting())
-	{
-		MovementStateComponent->StopSprintInput();
-	}
-
-	Crouch();
-}
-
-void APlayerCharacter::StopCrouchInput()
-{
-	if (IsDead()) return;
-	UnCrouch();
-}
-
-void APlayerCharacter::StartSprintInput()
-{
-	if (IsDead()) return;
-	if (MovementStateComponent != nullptr)
-	{
-		MovementStateComponent->StartSprintInput();
-	}
-}
-
-void APlayerCharacter::StopSprintInput()
-{
-	if (MovementStateComponent != nullptr)
-	{
-		MovementStateComponent->StopSprintInput();
-	}
-}
-
-void APlayerCharacter::StartPickupInput()
-{
-	if (IsDead()) return;
-	if (WeaponEquipmentComponent != nullptr)
-	{
-		WeaponEquipmentComponent->StartPickupInput();
-	}
-}
-
-void APlayerCharacter::StartDropInput()
-{
-	if (IsDead()) return;
-	if (WeaponEquipmentComponent != nullptr)
-	{
-		WeaponEquipmentComponent->StartDropInput();
-	}
-}
-
 UAbilitySystemComponent* APlayerCharacter::GetAbilitySystemComponent() const
 {
 	const AShooterPlayerState* ShooterPlayerState = GetShooterPlayerState();
@@ -370,10 +265,9 @@ void APlayerCharacter::ApplyDeathPresentation()
 
 	bDeathHandled = true;
 
-	const bool bFireInputStopped = CombatComponent != nullptr ? CombatComponent->HandleOwnerDeath() : false;
-	if (bFireInputStopped)
+	if (CombatComponent != nullptr)
 	{
-		OnFireInputStopped();
+		CombatComponent->HandleOwnerDeath();
 	}
 
 	if (MovementStateComponent != nullptr)

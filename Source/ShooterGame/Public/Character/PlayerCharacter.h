@@ -40,54 +40,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Player|Movement")
 	void Look(const FVector2D& InputValue);
 
-	// Records the fire press and requests server-authoritative fire activation.
-	UFUNCTION(BlueprintCallable, Category = "Player|Combat")
-	void StartFireInput();
-
-	// Records the fire release and requests server-authoritative fire cancellation.
-	UFUNCTION(BlueprintCallable, Category = "Player|Combat")
-	void StopFireInput();
-
-	// Starts the built-in jump behavior through a project-specific input entry point.
-	UFUNCTION(BlueprintCallable, Category = "Player|Movement")
-	void StartJumpInput();
-
-	// Stops the built-in jump behavior when the jump input is released.
-	UFUNCTION(BlueprintCallable, Category = "Player|Movement")
-	void StopJumpInput();
-
-	// Starts the hold-to-aim combat state.
-	UFUNCTION(BlueprintCallable, Category = "Player|Combat")
-	void StartAimInput();
-
-	// Stops the hold-to-aim combat state.
-	UFUNCTION(BlueprintCallable, Category = "Player|Combat")
-	void StopAimInput();
-
-	// Starts the built-in crouch behavior while the input is held.
-	UFUNCTION(BlueprintCallable, Category = "Player|Movement")
-	void StartCrouchInput();
-
-	// Stops the built-in crouch behavior when the input is released.
-	UFUNCTION(BlueprintCallable, Category = "Player|Movement")
-	void StopCrouchInput();
-
-	// Starts the hold-to-sprint movement ability when forward input allows it.
-	UFUNCTION(BlueprintCallable, Category = "Player|Movement")
-	void StartSprintInput();
-
-	// Stops the hold-to-sprint movement ability.
-	UFUNCTION(BlueprintCallable, Category = "Player|Movement")
-	void StopSprintInput();
-
-	// Requests that the authority path equips the world weapon currently targeted by the crosshair.
-	UFUNCTION(BlueprintCallable, Category = "Player|Combat")
-	void StartPickupInput();
-
-	// Requests that the authority path drops the current weapon using crosshair aim.
-	UFUNCTION(BlueprintCallable, Category = "Player|Combat")
-	void StartDropInput();
-
 	// Returns the combat ASC hosted by this player's PlayerState.
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
@@ -177,14 +129,6 @@ public:
 	virtual void HandleShooterAimStateChanged(bool bIsNowAiming) override;
 
 protected:
-	// Lets Blueprint child classes react when the fire button is pressed.
-	UFUNCTION(BlueprintImplementableEvent, Category = "Player|Combat")
-	void OnFireInputStarted();
-
-	// Lets Blueprint child classes react when the fire button is released.
-	UFUNCTION(BlueprintImplementableEvent, Category = "Player|Combat")
-	void OnFireInputStopped();
-
 	// Binds health delegates once components are ready.
 	virtual void BeginPlay() override;
 
