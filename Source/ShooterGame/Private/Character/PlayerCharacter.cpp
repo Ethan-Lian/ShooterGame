@@ -1,4 +1,6 @@
 #include "Character/PlayerCharacter.h"
+#include "AbilitySystem/ShooterGameplayTags.h"
+#include "AbilitySystemComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -14,7 +16,6 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "HUD/ShooterHUD.h"
-#include "Net/UnrealNetwork.h"
 #include "PlayerState/ShooterPlayerState.h"
 #include "ShooterGame.h"
 #include "Weapon/ShooterWeaponBase.h"
@@ -54,7 +55,7 @@ APlayerCharacter::APlayerCharacter()
 
 void APlayerCharacter::Move(const FVector2D& InputValue)
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	if (MovementStateComponent != nullptr)
 	{
 		MovementStateComponent->HandleMoveInput(InputValue);
@@ -74,7 +75,7 @@ void APlayerCharacter::Move(const FVector2D& InputValue)
 
 void APlayerCharacter::Look(const FVector2D& InputValue)
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	if (Controller == nullptr || InputValue.IsNearlyZero()) return;
 
 	const float YawInput = InputValue.X * LookYawSensitivity;
@@ -86,7 +87,7 @@ void APlayerCharacter::Look(const FVector2D& InputValue)
 
 void APlayerCharacter::StartFireInput()
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	if (CombatComponent != nullptr && CombatComponent->StartFireInput())
 	{
 		OnFireInputStarted();
@@ -95,7 +96,7 @@ void APlayerCharacter::StartFireInput()
 
 void APlayerCharacter::StopFireInput()
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	if (CombatComponent != nullptr && CombatComponent->StopFireInput())
 	{
 		OnFireInputStopped();
@@ -104,19 +105,19 @@ void APlayerCharacter::StopFireInput()
 
 void APlayerCharacter::StartJumpInput()
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	Jump();
 }
 
 void APlayerCharacter::StopJumpInput()
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	StopJumping();
 }
 
 void APlayerCharacter::StartAimInput()
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	if (MovementStateComponent != nullptr && MovementStateComponent->IsSprinting())
 	{
 		MovementStateComponent->StopSprintInput();
@@ -130,7 +131,7 @@ void APlayerCharacter::StartAimInput()
 
 void APlayerCharacter::StopAimInput()
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	if (CombatComponent != nullptr)
 	{
 		CombatComponent->StopAimInput();
@@ -139,7 +140,7 @@ void APlayerCharacter::StopAimInput()
 
 void APlayerCharacter::StartCrouchInput()
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	if (MovementStateComponent != nullptr && MovementStateComponent->IsSprinting())
 	{
 		MovementStateComponent->StopSprintInput();
@@ -150,13 +151,13 @@ void APlayerCharacter::StartCrouchInput()
 
 void APlayerCharacter::StopCrouchInput()
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	UnCrouch();
 }
 
 void APlayerCharacter::StartSprintInput()
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	if (MovementStateComponent != nullptr)
 	{
 		MovementStateComponent->StartSprintInput();
@@ -173,7 +174,7 @@ void APlayerCharacter::StopSprintInput()
 
 void APlayerCharacter::StartPickupInput()
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	if (WeaponEquipmentComponent != nullptr)
 	{
 		WeaponEquipmentComponent->StartPickupInput();
@@ -182,7 +183,7 @@ void APlayerCharacter::StartPickupInput()
 
 void APlayerCharacter::StartDropInput()
 {
-	if (bIsDead) return;
+	if (IsDead()) return;
 	if (WeaponEquipmentComponent != nullptr)
 	{
 		WeaponEquipmentComponent->StartDropInput();
@@ -236,6 +237,12 @@ bool APlayerCharacter::IsSprinting() const
 	return MovementStateComponent != nullptr && MovementStateComponent->IsSprinting();
 }
 
+bool APlayerCharacter::IsDead() const
+{
+	const UAbilitySystemComponent* AbilitySystemComponent = GetAbilitySystemComponent();
+	return AbilitySystemComponent != nullptr && AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead);
+}
+
 void APlayerCharacter::HandleAimStateChanged(bool bIsNowAiming)
 {
 	UCharacterMovementComponent* MovementComponent = GetCharacterMovement();
@@ -263,13 +270,6 @@ void APlayerCharacter::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
 	InitializeAbilitySystemActorInfo();
-}
-
-void APlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
-	DOREPLIFETIME(APlayerCharacter, bIsDead);
 }
 
 void APlayerCharacter::BeginPlay()
@@ -307,6 +307,8 @@ void APlayerCharacter::InitializeAbilitySystemActorInfo()
 		MovementStateComponent->InitializeWithAbilitySystem(ShooterPlayerState->GetAbilitySystemComponent());
 	}
 
+	BindDeathStateTagListener(ShooterPlayerState->GetAbilitySystemComponent());
+
 	if (IsLocallyControlled())
 	{
 		if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
@@ -319,22 +321,44 @@ void APlayerCharacter::InitializeAbilitySystemActorInfo()
 	}
 }
 
-void APlayerCharacter::HandleHealthChanged(float OldValue, float NewValue)
+void APlayerCharacter::BindDeathStateTagListener(UAbilitySystemComponent* AbilitySystemComponent)
 {
-	UE_LOG(LogShooterGame, Verbose, TEXT("%s health changed %.1f -> %.1f"), *GetName(), OldValue, NewValue);
-}
-
-void APlayerCharacter::BeginDeathPresentation(const FGameplayEventData* DeathEventData)
-{
-	(void)DeathEventData;
-
-	if (!HasAuthority() || bIsDead)
+	if (BoundDeathStateAbilitySystemComponent.Get() == AbilitySystemComponent && DeathStateTagChangedDelegateHandle.IsValid())
 	{
 		return;
 	}
 
-	bIsDead = true;
-	ApplyDeathPresentation();
+	if (UAbilitySystemComponent* BoundAbilitySystemComponent = BoundDeathStateAbilitySystemComponent.Get())
+	{
+		if (DeathStateTagChangedDelegateHandle.IsValid())
+		{
+			BoundAbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_Dead).Remove(DeathStateTagChangedDelegateHandle);
+		}
+	}
+
+	BoundDeathStateAbilitySystemComponent = AbilitySystemComponent;
+	DeathStateTagChangedDelegateHandle.Reset();
+
+	if (AbilitySystemComponent == nullptr)
+	{
+		return;
+	}
+
+	DeathStateTagChangedDelegateHandle = AbilitySystemComponent->RegisterGameplayTagEvent(
+		TAG_State_Dead,
+		EGameplayTagEventType::NewOrRemoved).AddUObject(
+			this,
+			&APlayerCharacter::HandleDeathStateTagChanged);
+
+	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead))
+	{
+		ApplyDeathPresentation();
+	}
+}
+
+void APlayerCharacter::HandleHealthChanged(float OldValue, float NewValue)
+{
+	UE_LOG(LogShooterGame, Verbose, TEXT("%s health changed %.1f -> %.1f"), *GetName(), OldValue, NewValue);
 }
 
 void APlayerCharacter::ApplyDeathPresentation()
@@ -385,9 +409,9 @@ void APlayerCharacter::PlayDeathMontage()
 	}
 }
 
-void APlayerCharacter::OnRep_IsDead()
+void APlayerCharacter::HandleDeathStateTagChanged(const FGameplayTag Tag, int32 NewCount)
 {
-	if (bIsDead)
+	if (Tag == TAG_State_Dead && NewCount > 0)
 	{
 		ApplyDeathPresentation();
 	}

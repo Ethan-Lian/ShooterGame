@@ -3,6 +3,7 @@
 #include "AbilitySystemInterface.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "GameplayEffectTypes.h"
 #include "Interfaces/ShooterCombatInterface.h"
 #include "Interfaces/ShooterEquipmentInterface.h"
 #include "PlayerCharacter.generated.h"
@@ -99,9 +100,6 @@ public:
 	// Initializes ASC actor info on clients once PlayerState replicates in.
 	virtual void OnRep_PlayerState() override;
 
-	// Replicates death presentation state to clients.
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-	
 public:
 	// Returns the camera boom used to position the third-person camera.
 	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
@@ -170,16 +168,13 @@ public:
 
 	// Returns whether this pawn is currently in its death presentation state.
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
-	bool IsDead() const { return bIsDead; }
+	bool IsDead() const;
 
 	// Applies the local movement-facing rules that match the combat aim state.
 	void HandleAimStateChanged(bool bIsNowAiming);
 
 	// Applies aim presentation through the combat interface.
 	virtual void HandleShooterAimStateChanged(bool bIsNowAiming) override;
-
-	// Starts the replicated death presentation for this pawn.
-	void BeginDeathPresentation(const FGameplayEventData* DeathEventData);
 
 protected:
 	// Lets Blueprint child classes react when the fire button is pressed.
@@ -237,6 +232,9 @@ private:
 	// Links the pawn avatar to the PlayerState-owned ASC and initializes health bindings.
 	void InitializeAbilitySystemActorInfo();
 
+	// Rebinds the dead-state tag listener after ASC actor info changes.
+	void BindDeathStateTagListener(UAbilitySystemComponent* AbilitySystemComponent);
+
 	// Mirrors health changes for logging or future HUD hooks.
 	UFUNCTION()
 	void HandleHealthChanged(float OldValue, float NewValue);
@@ -247,9 +245,8 @@ private:
 	// Plays the configured death montage if the mesh has an animation instance.
 	void PlayDeathMontage();
 
-	// Reacts when the server-replicated dead state reaches clients.
-	UFUNCTION()
-	void OnRep_IsDead();
+	// Reacts when the replicated ASC dead tag is added to this avatar.
+	void HandleDeathStateTagChanged(const FGameplayTag Tag, int32 NewCount);
 
 	// Scales horizontal look input before it reaches the controller.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Player|Camera", meta = (AllowPrivateAccess = "true", ClampMin = "0.0"))
@@ -259,10 +256,10 @@ private:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Player|Camera", meta = (AllowPrivateAccess = "true", ClampMin = "0.0"))
 	float LookPitchSensitivity = 0.25f;
 
-	// Replicated death presentation state used by clients and local input gates.
-	UPROPERTY(ReplicatedUsing = OnRep_IsDead)
-	bool bIsDead = false;
-
 	// Prevents death presentation from running more than once per pawn.
 	bool bDeathHandled = false;
+
+	TWeakObjectPtr<UAbilitySystemComponent> BoundDeathStateAbilitySystemComponent;
+
+	FDelegateHandle DeathStateTagChangedDelegateHandle;
 };

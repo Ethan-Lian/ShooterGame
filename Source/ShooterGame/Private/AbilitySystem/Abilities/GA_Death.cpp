@@ -63,8 +63,6 @@ void UGA_Death::ActivateAbility(
 		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*DeathStateSpecHandle.Data.Get());
 	}
 
-	DeadCharacter->BeginDeathPresentation(TriggerEventData);
-
 	if (UWorld* World = GetWorld())
 	{
 		if (AShooterGameMode* ShooterGameMode = World->GetAuthGameMode<AShooterGameMode>())
