@@ -3,9 +3,10 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/ShooterAbilitySystemComponent.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
-#include "Character/PlayerCharacter.h"
 #include "Components/ShooterWeaponEquipmentComponent.h"
 #include "Components/ShooterWeaponInteractionComponent.h"
+#include "Interfaces/ShooterCombatInterface.h"
+#include "Interfaces/ShooterEquipmentInterface.h"
 #include "Net/UnrealNetwork.h"
 
 UShooterCombatComponent::UShooterCombatComponent()
@@ -135,27 +136,22 @@ bool UShooterCombatComponent::HandleOwnerDeath()
 	return bFireInputStopped;
 }
 
-APlayerCharacter* UShooterCombatComponent::GetOwningPlayerCharacter() const
-{
-	return Cast<APlayerCharacter>(GetOwner());
-}
-
 UAbilitySystemComponent* UShooterCombatComponent::GetOwningAbilitySystemComponent() const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	return OwnerCharacter != nullptr ? OwnerCharacter->GetAbilitySystemComponent() : nullptr;
+	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner());
+	return CombatOwner != nullptr ? CombatOwner->GetShooterAbilitySystemComponent() : nullptr;
 }
 
 UShooterWeaponEquipmentComponent* UShooterCombatComponent::GetOwningWeaponEquipmentComponent() const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	return OwnerCharacter != nullptr ? OwnerCharacter->GetWeaponEquipmentComponent() : nullptr;
+	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(GetOwner());
+	return EquipmentOwner != nullptr ? EquipmentOwner->GetShooterWeaponEquipmentComponent() : nullptr;
 }
 
 UShooterWeaponInteractionComponent* UShooterCombatComponent::GetOwningWeaponInteractionComponent() const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	return OwnerCharacter != nullptr ? OwnerCharacter->GetWeaponInteractionComponent() : nullptr;
+	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(GetOwner());
+	return EquipmentOwner != nullptr ? EquipmentOwner->GetShooterWeaponInteractionComponent() : nullptr;
 }
 
 void UShooterCombatComponent::HandleFireInputPressed()
@@ -189,9 +185,9 @@ void UShooterCombatComponent::SetAimInputPressed(bool bNewIsAiming)
 
 	bIsAiming = bNewIsAiming;
 
-	if (APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter())
+	if (IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner()))
 	{
-		OwnerCharacter->HandleAimStateChanged(bIsAiming);
+		CombatOwner->HandleShooterAimStateChanged(bIsAiming);
 	}
 }
 
@@ -208,9 +204,9 @@ bool UShooterCombatComponent::IsWeaponInteractionBlocked() const
 
 void UShooterCombatComponent::OnRep_IsAiming()
 {
-	if (APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter())
+	if (IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner()))
 	{
-		OwnerCharacter->HandleAimStateChanged(bIsAiming);
+		CombatOwner->HandleShooterAimStateChanged(bIsAiming);
 	}
 }
 

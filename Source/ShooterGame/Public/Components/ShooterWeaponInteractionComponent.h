@@ -3,7 +3,6 @@
 #include "Components/ActorComponent.h"
 #include "ShooterWeaponInteractionComponent.generated.h"
 
-class APlayerCharacter;
 class AShooterWeaponBase;
 class UShooterCombatComponent;
 class UShooterWeaponEquipmentComponent;
@@ -40,9 +39,6 @@ public:
 	void ClearTargetedPickupWeapon();
 
 private:
-	// Resolves the typed owning character helper.
-	APlayerCharacter* GetOwningPlayerCharacter() const;
-
 	// Resolves the combat component that owns death/combat blocking rules.
 	UShooterCombatComponent* GetOwningCombatComponent() const;
 

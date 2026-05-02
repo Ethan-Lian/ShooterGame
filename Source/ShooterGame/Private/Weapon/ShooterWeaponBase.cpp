@@ -1,10 +1,10 @@
 #include "Weapon/ShooterWeaponBase.h"
 
-#include "Character/PlayerCharacter.h"
 #include "Components/SceneComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/WidgetComponent.h"
+#include "GameFramework/Character.h"
 #include "Net/UnrealNetwork.h"
 
 AShooterWeaponBase::AShooterWeaponBase()
@@ -118,7 +118,7 @@ UStaticMeshComponent* AShooterWeaponBase::GetWeaponMesh() const
 	return WeaponMeshComponent;
 }
 
-void AShooterWeaponBase::EnterEquippedState(APlayerCharacter* NewOwnerCharacter)
+void AShooterWeaponBase::EnterEquippedState(ACharacter* NewOwnerCharacter)
 {
 	if (NewOwnerCharacter == nullptr || NewOwnerCharacter->GetMesh() == nullptr || WeaponMeshComponent == nullptr)
 	{

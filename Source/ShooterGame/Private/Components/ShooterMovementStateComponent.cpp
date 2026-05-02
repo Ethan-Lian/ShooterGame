@@ -4,7 +4,7 @@
 #include "AbilitySystem/ShooterAbilitySystemComponent.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
 #include "AbilitySystemComponent.h"
-#include "Character/PlayerCharacter.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 UShooterMovementStateComponent::UShooterMovementStateComponent()
@@ -114,11 +114,6 @@ bool UShooterMovementStateComponent::IsSprinting() const
 		&& AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Movement_Sprinting);
 }
 
-APlayerCharacter* UShooterMovementStateComponent::GetOwningPlayerCharacter() const
-{
-	return Cast<APlayerCharacter>(GetOwner());
-}
-
 bool UShooterMovementStateComponent::IsOwnerAuthority() const
 {
 	const AActor* OwnerActor = GetOwner();
@@ -127,7 +122,7 @@ bool UShooterMovementStateComponent::IsOwnerAuthority() const
 
 void UShooterMovementStateComponent::ApplyMaxWalkSpeed(float NewMaxWalkSpeed) const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
+	const ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
 	UCharacterMovementComponent* CharacterMovement = OwnerCharacter != nullptr
 		? OwnerCharacter->GetCharacterMovement()
 		: nullptr;

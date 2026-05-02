@@ -3,7 +3,6 @@
 #include "Components/ActorComponent.h"
 #include "ShooterCombatComponent.generated.h"
 
-class APlayerCharacter;
 class UAbilitySystemComponent;
 class UShooterWeaponEquipmentComponent;
 class UShooterWeaponInteractionComponent;
@@ -43,9 +42,6 @@ public:
 	bool HandleOwnerDeath();
 
 private:
-	// Resolves the typed owning character helper.
-	APlayerCharacter* GetOwningPlayerCharacter() const;
-
 	// Resolves the owning character's PlayerState-hosted ASC.
 	UAbilitySystemComponent* GetOwningAbilitySystemComponent() const;
 

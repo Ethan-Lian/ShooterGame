@@ -4,7 +4,7 @@
 #include "ShooterWeaponBase.generated.h"
 class UWidgetComponent;
 class USphereComponent;
-class APlayerCharacter;
+class ACharacter;
 class USceneComponent;
 class UStaticMeshComponent;
 
@@ -82,7 +82,7 @@ public:
 	bool IsPickupInteractionEnabled() const { return bIsWorldPickup && bPickupInteractionEnabled && !bDropPresentationActive; }
 
 	// Switches the weapon into its character-equipped runtime state.
-	void EnterEquippedState(APlayerCharacter* NewOwnerCharacter);
+	void EnterEquippedState(ACharacter* NewOwnerCharacter);
 
 	// Switches the weapon into its world-pickup runtime state.
 	void EnterWorldPickupState(const FTransform& WorldTransform);

@@ -4,7 +4,6 @@
 #include "GameplayEffectTypes.h"
 #include "ShooterMovementStateComponent.generated.h"
 
-class APlayerCharacter;
 class UAbilitySystemComponent;
 
 UCLASS(ClassGroup = (ShooterGame), Blueprintable, BlueprintType, meta = (BlueprintSpawnableComponent))
@@ -39,9 +38,6 @@ public:
 	bool IsSprinting() const;
 
 private:
-	// Resolves the typed owning character helper.
-	APlayerCharacter* GetOwningPlayerCharacter() const;
-
 	// Returns whether this component is running on the authoritative owner actor.
 	bool IsOwnerAuthority() const;
 

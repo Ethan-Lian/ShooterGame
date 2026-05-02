@@ -1,7 +1,8 @@
 #include "Components/ShooterInventoryComponent.h"
 
-#include "Character/PlayerCharacter.h"
 #include "Components/ShooterWeaponEquipmentComponent.h"
+#include "GameFramework/Pawn.h"
+#include "Interfaces/ShooterEquipmentInterface.h"
 #include "Net/UnrealNetwork.h"
 #include "PlayerState/ShooterPlayerState.h"
 #include "Weapon/ShooterWeaponBase.h"
@@ -183,13 +184,14 @@ bool UShooterInventoryComponent::BuildInventoryEntryFromPickup(AShooterWeaponBas
 void UShooterInventoryComponent::OnRep_InventoryEntries()
 {
 	const AShooterPlayerState* OwnerPlayerState = Cast<AShooterPlayerState>(GetOwner());
-	APlayerCharacter* OwnerCharacter = OwnerPlayerState != nullptr ? OwnerPlayerState->GetPawn<APlayerCharacter>() : nullptr;
-	if (OwnerCharacter == nullptr)
+	APawn* OwnerPawn = OwnerPlayerState != nullptr ? OwnerPlayerState->GetPawn() : nullptr;
+	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(OwnerPawn);
+	if (EquipmentOwner == nullptr)
 	{
 		return;
 	}
 
-	if (UShooterWeaponEquipmentComponent* EquipmentComponent = OwnerCharacter->GetWeaponEquipmentComponent())
+	if (UShooterWeaponEquipmentComponent* EquipmentComponent = EquipmentOwner->GetShooterWeaponEquipmentComponent())
 	{
 		EquipmentComponent->HandleInventoryReplicated();
 	}

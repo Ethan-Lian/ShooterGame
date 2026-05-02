@@ -1,7 +1,7 @@
 #include "AbilitySystem/Abilities/GA_DropWeapon.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
-#include "Character/PlayerCharacter.h"
 #include "Components/ShooterWeaponEquipmentComponent.h"
+#include "Interfaces/ShooterEquipmentInterface.h"
 
 UGA_DropWeapon::UGA_DropWeapon()
 {
@@ -19,14 +19,14 @@ void UGA_DropWeapon::ActivateAbility(
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	APlayerCharacter* Character = Cast<APlayerCharacter>(GetAvatarActorFromActorInfo());
-	if (Character == nullptr)
+	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(GetAvatarActorFromActorInfo());
+	if (EquipmentOwner == nullptr)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
-	UShooterWeaponEquipmentComponent* EquipmentComponent = Character->GetWeaponEquipmentComponent();
+	UShooterWeaponEquipmentComponent* EquipmentComponent = EquipmentOwner->GetShooterWeaponEquipmentComponent();
 	if (EquipmentComponent != nullptr)
 	{
 		EquipmentComponent->DropEquippedWeapon();

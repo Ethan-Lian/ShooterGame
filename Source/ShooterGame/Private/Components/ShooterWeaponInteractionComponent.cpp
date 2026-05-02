@@ -2,12 +2,14 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
-#include "Character/PlayerCharacter.h"
 #include "CollisionShape.h"
 #include "Components/ShooterCombatComponent.h"
 #include "Components/ShooterWeaponEquipmentComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Controller.h"
+#include "GameFramework/Pawn.h"
+#include "Interfaces/ShooterCombatInterface.h"
+#include "Interfaces/ShooterEquipmentInterface.h"
 #include "Weapon/ShooterWeaponBase.h"
 #include "WorldCollision.h"
 
@@ -21,8 +23,8 @@ void UShooterWeaponInteractionComponent::TickComponent(float DeltaTime, ELevelTi
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	if (OwnerCharacter == nullptr || !OwnerCharacter->IsLocallyControlled() || IsInteractionBlocked())
+	APawn* OwnerPawn = Cast<APawn>(GetOwner());
+	if (OwnerPawn == nullptr || !OwnerPawn->IsLocallyControlled() || IsInteractionBlocked())
 	{
 		ClearTargetedPickupWeapon();
 		return;
@@ -45,9 +47,9 @@ AShooterWeaponBase* UShooterWeaponInteractionComponent::FindPickupWeaponFromView
 
 bool UShooterWeaponInteractionComponent::CanPickupWeapon(const AShooterWeaponBase* WeaponToPickup) const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
+	const AActor* OwnerActor = GetOwner();
 	const UShooterWeaponEquipmentComponent* EquipmentComponent = GetOwningWeaponEquipmentComponent();
-	if (WeaponToPickup == nullptr || OwnerCharacter == nullptr || EquipmentComponent == nullptr)
+	if (WeaponToPickup == nullptr || OwnerActor == nullptr || EquipmentComponent == nullptr)
 	{
 		return false;
 	}
@@ -62,21 +64,21 @@ bool UShooterWeaponInteractionComponent::CanPickupWeapon(const AShooterWeaponBas
 		return false;
 	}
 
-	return FVector::DistSquared(WeaponToPickup->GetActorLocation(), OwnerCharacter->GetActorLocation()) <= FMath::Square(PickupSearchRadius);
+	return FVector::DistSquared(WeaponToPickup->GetActorLocation(), OwnerActor->GetActorLocation()) <= FMath::Square(PickupSearchRadius);
 }
 
 bool UShooterWeaponInteractionComponent::GetViewTracePoints(float TraceDistance, FVector& OutTraceStart, FVector& OutTraceEnd) const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	if (OwnerCharacter == nullptr || TraceDistance <= 0.f)
+	const APawn* OwnerPawn = Cast<APawn>(GetOwner());
+	if (OwnerPawn == nullptr || TraceDistance <= 0.f)
 	{
 		return false;
 	}
 
-	FVector ViewLocation = OwnerCharacter->GetPawnViewLocation();
-	FRotator ViewRotation = OwnerCharacter->GetBaseAimRotation();
+	FVector ViewLocation = OwnerPawn->GetPawnViewLocation();
+	FRotator ViewRotation = OwnerPawn->GetBaseAimRotation();
 
-	if (const AController* OwnerController = OwnerCharacter->GetController())
+	if (const AController* OwnerController = OwnerPawn->GetController())
 	{
 		OwnerController->GetPlayerViewPoint(ViewLocation, ViewRotation);
 	}
@@ -91,29 +93,24 @@ void UShooterWeaponInteractionComponent::ClearTargetedPickupWeapon()
 	SetTargetedPickupWeapon(nullptr);
 }
 
-APlayerCharacter* UShooterWeaponInteractionComponent::GetOwningPlayerCharacter() const
-{
-	return Cast<APlayerCharacter>(GetOwner());
-}
-
 UShooterCombatComponent* UShooterWeaponInteractionComponent::GetOwningCombatComponent() const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	return OwnerCharacter != nullptr ? OwnerCharacter->GetCombatComponent() : nullptr;
+	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner());
+	return CombatOwner != nullptr ? CombatOwner->GetShooterCombatComponent() : nullptr;
 }
 
 UShooterWeaponEquipmentComponent* UShooterWeaponInteractionComponent::GetOwningWeaponEquipmentComponent() const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	return OwnerCharacter != nullptr ? OwnerCharacter->GetWeaponEquipmentComponent() : nullptr;
+	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(GetOwner());
+	return EquipmentOwner != nullptr ? EquipmentOwner->GetShooterWeaponEquipmentComponent() : nullptr;
 }
 
 bool UShooterWeaponInteractionComponent::TracePickupView(FHitResult& OutHitResult) const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
+	const APawn* OwnerPawn = Cast<APawn>(GetOwner());
 	const UShooterWeaponEquipmentComponent* EquipmentComponent = GetOwningWeaponEquipmentComponent();
 	UWorld* World = GetWorld();
-	if (OwnerCharacter == nullptr || EquipmentComponent == nullptr || World == nullptr)
+	if (OwnerPawn == nullptr || EquipmentComponent == nullptr || World == nullptr)
 	{
 		return false;
 	}
@@ -130,8 +127,8 @@ bool UShooterWeaponInteractionComponent::TracePickupView(FHitResult& OutHitResul
 		return false;
 	}
 
-	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(PlayerWeaponPickupViewTrace), false, OwnerCharacter);
-	QueryParams.AddIgnoredActor(OwnerCharacter);
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(PlayerWeaponPickupViewTrace), false, OwnerPawn);
+	QueryParams.AddIgnoredActor(OwnerPawn);
 
 	if (AShooterWeaponBase* EquippedWeapon = EquipmentComponent->GetEquippedWeapon())
 	{
@@ -155,8 +152,8 @@ bool UShooterWeaponInteractionComponent::TracePickupView(FHitResult& OutHitResul
 
 bool UShooterWeaponInteractionComponent::IsInteractionBlocked() const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	if (OwnerCharacter == nullptr)
+	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner());
+	if (CombatOwner == nullptr)
 	{
 		return true;
 	}
@@ -169,7 +166,7 @@ bool UShooterWeaponInteractionComponent::IsInteractionBlocked() const
 		}
 	}
 
-	if (const UAbilitySystemComponent* AbilitySystemComponent = OwnerCharacter->GetAbilitySystemComponent())
+	if (const UAbilitySystemComponent* AbilitySystemComponent = CombatOwner->GetShooterAbilitySystemComponent())
 	{
 		return AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead);
 	}

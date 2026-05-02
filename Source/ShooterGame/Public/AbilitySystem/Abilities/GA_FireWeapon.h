@@ -3,7 +3,7 @@
 #include "Abilities/GameplayAbility.h"
 #include "GA_FireWeapon.generated.h"
 
-class APlayerCharacter;
+class APawn;
 class AShooterWeaponBase;
 class UAbilitySystemComponent;
 class UShooterWeaponInstance;
@@ -38,14 +38,14 @@ private:
 
 	// Resolves the center-screen aim point from the player's authoritative view.
 	bool ResolveAimPoint(
-		const APlayerCharacter* ShooterCharacter,
+		const APawn* ShooterPawn,
 		const AShooterWeaponBase* EquippedWeaponActor,
 		const FWeaponFireConfig& FireConfig,
 		FVector& OutAimPoint) const;
 
 	// Applies immediate damage through a muzzle-to-aim hitscan trace.
 	void FireHitscanShot(
-		APlayerCharacter* ShooterCharacter,
+		APawn* ShooterPawn,
 		AShooterWeaponBase* EquippedWeaponActor,
 		UAbilitySystemComponent* SourceAbilitySystem,
 		const FWeaponFireConfig& FireConfig,
@@ -53,7 +53,7 @@ private:
 
 	// Spawns the configured projectile for slower physical weapons.
 	void FireProjectileShot(
-		APlayerCharacter* ShooterCharacter,
+		APawn* ShooterPawn,
 		AShooterWeaponBase* EquippedWeaponActor,
 		UAbilitySystemComponent* SourceAbilitySystem,
 		const FWeaponFireConfig& FireConfig,
@@ -61,7 +61,7 @@ private:
 
 	// Sends the existing fire cue with a direction that matches the gameplay shot.
 	void ExecuteFireCue(
-		APlayerCharacter* ShooterCharacter,
+		APawn* ShooterPawn,
 		AShooterWeaponBase* EquippedWeaponActor,
 		UAbilitySystemComponent* SourceAbilitySystem,
 		const FVector& MuzzleLocation,

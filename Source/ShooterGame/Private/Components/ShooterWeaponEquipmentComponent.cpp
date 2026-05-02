@@ -3,13 +3,15 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/ShooterAbilitySystemComponent.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
-#include "Character/PlayerCharacter.h"
 #include "Components/ShooterCombatComponent.h"
 #include "Components/ShooterInventoryComponent.h"
 #include "Components/ShooterWeaponInteractionComponent.h"
 #include "CollisionShape.h"
 #include "Engine/World.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/Controller.h"
+#include "Interfaces/ShooterCombatInterface.h"
+#include "Interfaces/ShooterEquipmentInterface.h"
 #include "Net/UnrealNetwork.h"
 #include "Weapon/ShooterWeaponBase.h"
 #include "Weapon/ShooterWeaponInstance.h"
@@ -177,7 +179,7 @@ bool UShooterWeaponEquipmentComponent::HandleOwnerDeath()
 	EquippedItemId = INDEX_NONE;
 	ClearEquippedWeaponInstance();
 
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
+	const ACharacter* OwnerCharacter = GetOwningCharacter();
 	const FVector RightDirection = OwnerCharacter != nullptr ? OwnerCharacter->GetActorRightVector() : FVector::RightVector;
 
 	bool bDroppedAnyWeapon = false;
@@ -213,27 +215,27 @@ void UShooterWeaponEquipmentComponent::HandleInventoryReplicated()
 	RefreshEquippedWeaponInstance();
 }
 
-APlayerCharacter* UShooterWeaponEquipmentComponent::GetOwningPlayerCharacter() const
+ACharacter* UShooterWeaponEquipmentComponent::GetOwningCharacter() const
 {
-	return Cast<APlayerCharacter>(GetOwner());
+	return Cast<ACharacter>(GetOwner());
 }
 
 UShooterCombatComponent* UShooterWeaponEquipmentComponent::GetOwningCombatComponent() const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	return OwnerCharacter != nullptr ? OwnerCharacter->GetCombatComponent() : nullptr;
+	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner());
+	return CombatOwner != nullptr ? CombatOwner->GetShooterCombatComponent() : nullptr;
 }
 
 UShooterInventoryComponent* UShooterWeaponEquipmentComponent::GetOwningInventoryComponent() const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	return OwnerCharacter != nullptr ? OwnerCharacter->GetInventoryComponent() : nullptr;
+	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(GetOwner());
+	return EquipmentOwner != nullptr ? EquipmentOwner->GetShooterInventoryComponent() : nullptr;
 }
 
 UShooterWeaponInteractionComponent* UShooterWeaponEquipmentComponent::GetOwningWeaponInteractionComponent() const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	return OwnerCharacter != nullptr ? OwnerCharacter->GetWeaponInteractionComponent() : nullptr;
+	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(GetOwner());
+	return EquipmentOwner != nullptr ? EquipmentOwner->GetShooterWeaponInteractionComponent() : nullptr;
 }
 
 bool UShooterWeaponEquipmentComponent::IsEquipmentInteractionBlocked() const
@@ -243,13 +245,13 @@ bool UShooterWeaponEquipmentComponent::IsEquipmentInteractionBlocked() const
 		return CombatComponent->IsWeaponInteractionBlocked();
 	}
 
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	if (OwnerCharacter == nullptr)
+	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner());
+	if (CombatOwner == nullptr)
 	{
 		return true;
 	}
 
-	if (const UAbilitySystemComponent* AbilitySystemComponent = OwnerCharacter->GetAbilitySystemComponent())
+	if (const UAbilitySystemComponent* AbilitySystemComponent = CombatOwner->GetShooterAbilitySystemComponent())
 	{
 		return AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead);
 	}
@@ -259,9 +261,9 @@ bool UShooterWeaponEquipmentComponent::IsEquipmentInteractionBlocked() const
 
 UShooterAbilitySystemComponent* UShooterWeaponEquipmentComponent::GetOwningShooterAbilitySystemComponent() const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	return OwnerCharacter != nullptr
-		? Cast<UShooterAbilitySystemComponent>(OwnerCharacter->GetAbilitySystemComponent())
+	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner());
+	return CombatOwner != nullptr
+		? Cast<UShooterAbilitySystemComponent>(CombatOwner->GetShooterAbilitySystemComponent())
 		: nullptr;
 }
 
@@ -315,7 +317,7 @@ bool UShooterWeaponEquipmentComponent::TryPickupTargetWeapon(AShooterWeaponBase*
 bool UShooterWeaponEquipmentComponent::EquipInventoryItemById(int32 ItemId, AShooterWeaponBase* ExistingPresentationActor)
 {
 	AActor* OwnerActor = GetOwner();
-	APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
+	ACharacter* OwnerCharacter = GetOwningCharacter();
 	UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent();
 	if (OwnerActor == nullptr || !OwnerActor->HasAuthority() || OwnerCharacter == nullptr || InventoryComponent == nullptr)
 	{
@@ -414,7 +416,7 @@ bool UShooterWeaponEquipmentComponent::DropEquippedWeapon()
 
 AShooterWeaponBase* UShooterWeaponEquipmentComponent::SpawnEquippedWeaponActor(const FWeaponInventoryEntry& Entry)
 {
-	APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
+	ACharacter* OwnerCharacter = GetOwningCharacter();
 	UWorld* World = GetWorld();
 	if (OwnerCharacter == nullptr || World == nullptr || !Entry.IsValid())
 	{
@@ -522,7 +524,7 @@ FTransform UShooterWeaponEquipmentComponent::ResolveGroundedDropTransform(const 
 FTransform UShooterWeaponEquipmentComponent::ResolveBallisticDropTransform(const FTransform& StartTransform) const
 {
 	UWorld* World = GetWorld();
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
+	const ACharacter* OwnerCharacter = GetOwningCharacter();
 	if (World == nullptr || OwnerCharacter == nullptr)
 	{
 		return ResolveGroundedDropTransform(StartTransform);
@@ -592,7 +594,7 @@ FTransform UShooterWeaponEquipmentComponent::ResolveReachableDropTransform(const
 {
 	FTransform ReachableTransform = DropTransform;
 	UWorld* World = GetWorld();
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
+	const ACharacter* OwnerCharacter = GetOwningCharacter();
 	if (World == nullptr || OwnerCharacter == nullptr || DropWallSweepRadius <= 0.f)
 	{
 		return ReachableTransform;
@@ -696,7 +698,7 @@ void UShooterWeaponEquipmentComponent::ClearEquippedWeaponInstance()
 
 FTransform UShooterWeaponEquipmentComponent::GetWeaponDropTransform() const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
+	const ACharacter* OwnerCharacter = GetOwningCharacter();
 	if (OwnerCharacter == nullptr)
 	{
 		return FTransform::Identity;
@@ -723,7 +725,7 @@ FTransform UShooterWeaponEquipmentComponent::GetWeaponDropTransform() const
 
 FTransform UShooterWeaponEquipmentComponent::GetWeaponDeathDropTransform() const
 {
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
+	const ACharacter* OwnerCharacter = GetOwningCharacter();
 	if (OwnerCharacter == nullptr)
 	{
 		return FTransform::Identity;
@@ -746,7 +748,7 @@ bool UShooterWeaponEquipmentComponent::IsValidWorldPickupForPickup(const AShoote
 		return false;
 	}
 
-	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
+	const ACharacter* OwnerCharacter = GetOwningCharacter();
 	if (OwnerCharacter == nullptr)
 	{
 		return false;
@@ -773,8 +775,10 @@ void UShooterWeaponEquipmentComponent::OnRep_EquippedWeapon(AShooterWeaponBase* 
 		return;
 	}
 
-	APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
-	if (OwnerCharacter == nullptr || OwnerCharacter->IsDead())
+	ACharacter* OwnerCharacter = GetOwningCharacter();
+	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner());
+	const UAbilitySystemComponent* AbilitySystemComponent = CombatOwner != nullptr ? CombatOwner->GetShooterAbilitySystemComponent() : nullptr;
+	if (OwnerCharacter == nullptr || (AbilitySystemComponent != nullptr && AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead)))
 	{
 		ClearLocalEquippedWeaponPresentation();
 		return;

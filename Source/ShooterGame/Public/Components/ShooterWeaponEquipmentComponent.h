@@ -3,7 +3,7 @@
 #include "Components/ActorComponent.h"
 #include "ShooterWeaponEquipmentComponent.generated.h"
 
-class APlayerCharacter;
+class ACharacter;
 class AShooterWeaponBase;
 class UShooterAbilitySystemComponent;
 class UShooterCombatComponent;
@@ -69,8 +69,8 @@ public:
 	bool DropEquippedWeapon();
 
 private:
-	// Resolves the typed owning character helper.
-	APlayerCharacter* GetOwningPlayerCharacter() const;
+	// Resolves the owning character used for attachment and character movement data.
+	ACharacter* GetOwningCharacter() const;
 
 	// Resolves the combat component that owns combat-state blocking rules.
 	UShooterCombatComponent* GetOwningCombatComponent() const;

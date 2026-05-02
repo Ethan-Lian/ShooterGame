@@ -3,6 +3,8 @@
 #include "AbilitySystemInterface.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Interfaces/ShooterCombatInterface.h"
+#include "Interfaces/ShooterEquipmentInterface.h"
 #include "PlayerCharacter.generated.h"
 
 class UWidgetComponent;
@@ -22,7 +24,7 @@ class USpringArmComponent;
 struct FGameplayEventData;
 
 UCLASS()
-class SHOOTERGAME_API APlayerCharacter : public ACharacter, public IAbilitySystemInterface
+class SHOOTERGAME_API APlayerCharacter : public ACharacter, public IAbilitySystemInterface, public IShooterCombatInterface, public IShooterEquipmentInterface
 {
 	GENERATED_BODY()
 
@@ -88,6 +90,9 @@ public:
 	// Returns the combat ASC hosted by this player's PlayerState.
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
+	// Returns the combat ASC through the avatar combat interface.
+	virtual UAbilitySystemComponent* GetShooterAbilitySystemComponent() const override;
+
 	// Initializes ASC actor info when the character becomes possessed.
 	virtual void PossessedBy(AController* NewController) override;
 
@@ -120,21 +125,36 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
 	UShooterInventoryComponent* GetInventoryComponent() const;
 
+	// Returns the logical inventory through the equipment interface.
+	virtual UShooterInventoryComponent* GetShooterInventoryComponent() const override;
+
 	// Returns the component that owns fire/aim state and combat blocking rules.
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
 	UShooterCombatComponent* GetCombatComponent() const { return CombatComponent; }
+
+	// Returns the component that owns fire/aim state through the combat interface.
+	virtual UShooterCombatComponent* GetShooterCombatComponent() const override { return CombatComponent; }
 
 	// Returns the component that owns sprint input state and movement-speed attributes.
 	UFUNCTION(BlueprintPure, Category = "Player|Movement")
 	UShooterMovementStateComponent* GetMovementStateComponent() const { return MovementStateComponent; }
 
+	// Returns the sprint/movement component through the combat interface.
+	virtual UShooterMovementStateComponent* GetShooterMovementStateComponent() const override { return MovementStateComponent; }
+
 	// Returns the component that owns the equipped weapon, equip/drop, and attachment replication.
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
 	UShooterWeaponEquipmentComponent* GetWeaponEquipmentComponent() const { return WeaponEquipmentComponent; }
 
+	// Returns the equipment component through the equipment interface.
+	virtual UShooterWeaponEquipmentComponent* GetShooterWeaponEquipmentComponent() const override { return WeaponEquipmentComponent; }
+
 	// Returns the component that owns local pickup targeting and pickup prompt state.
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
 	UShooterWeaponInteractionComponent* GetWeaponInteractionComponent() const { return WeaponInteractionComponent; }
+
+	// Returns the interaction component through the equipment interface.
+	virtual UShooterWeaponInteractionComponent* GetShooterWeaponInteractionComponent() const override { return WeaponInteractionComponent; }
 
 	// Returns whether combat currently treats this character as aiming.
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
@@ -154,6 +174,9 @@ public:
 
 	// Applies the local movement-facing rules that match the combat aim state.
 	void HandleAimStateChanged(bool bIsNowAiming);
+
+	// Applies aim presentation through the combat interface.
+	virtual void HandleShooterAimStateChanged(bool bIsNowAiming) override;
 
 	// Starts the replicated death presentation for this pawn.
 	void BeginDeathPresentation(const FGameplayEventData* DeathEventData);

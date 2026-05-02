@@ -195,6 +195,11 @@ UAbilitySystemComponent* APlayerCharacter::GetAbilitySystemComponent() const
 	return ShooterPlayerState != nullptr ? ShooterPlayerState->GetAbilitySystemComponent() : nullptr;
 }
 
+UAbilitySystemComponent* APlayerCharacter::GetShooterAbilitySystemComponent() const
+{
+	return GetAbilitySystemComponent();
+}
+
 AShooterWeaponBase* APlayerCharacter::GetEquippedWeapon() const
 {
 	return WeaponEquipmentComponent != nullptr ? WeaponEquipmentComponent->GetEquippedWeapon() : nullptr;
@@ -209,6 +214,11 @@ UShooterInventoryComponent* APlayerCharacter::GetInventoryComponent() const
 {
 	const AShooterPlayerState* ShooterPlayerState = GetShooterPlayerState();
 	return ShooterPlayerState != nullptr ? ShooterPlayerState->GetInventoryComponent() : nullptr;
+}
+
+UShooterInventoryComponent* APlayerCharacter::GetShooterInventoryComponent() const
+{
+	return GetInventoryComponent();
 }
 
 bool APlayerCharacter::IsAiming() const
@@ -236,6 +246,11 @@ void APlayerCharacter::HandleAimStateChanged(bool bIsNowAiming)
 
 	bUseControllerRotationYaw = bIsNowAiming;
 	MovementComponent->bOrientRotationToMovement = !bIsNowAiming;
+}
+
+void APlayerCharacter::HandleShooterAimStateChanged(bool bIsNowAiming)
+{
+	HandleAimStateChanged(bIsNowAiming);
 }
 
 void APlayerCharacter::PossessedBy(AController* NewController)

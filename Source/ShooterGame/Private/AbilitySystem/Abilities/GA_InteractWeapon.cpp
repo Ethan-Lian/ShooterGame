@@ -1,8 +1,8 @@
 #include "AbilitySystem/Abilities/GA_InteractWeapon.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
-#include "Character/PlayerCharacter.h"
 #include "Components/ShooterWeaponEquipmentComponent.h"
 #include "Components/ShooterWeaponInteractionComponent.h"
+#include "Interfaces/ShooterEquipmentInterface.h"
 
 UGA_InteractWeapon::UGA_InteractWeapon()
 {
@@ -20,15 +20,15 @@ void UGA_InteractWeapon::ActivateAbility(
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	APlayerCharacter* Character = Cast<APlayerCharacter>(GetAvatarActorFromActorInfo());
-	if (Character == nullptr)
+	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(GetAvatarActorFromActorInfo());
+	if (EquipmentOwner == nullptr)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
-	UShooterWeaponInteractionComponent* InteractionComponent = Character->GetWeaponInteractionComponent();
-	UShooterWeaponEquipmentComponent* EquipmentComponent = Character->GetWeaponEquipmentComponent();
+	UShooterWeaponInteractionComponent* InteractionComponent = EquipmentOwner->GetShooterWeaponInteractionComponent();
+	UShooterWeaponEquipmentComponent* EquipmentComponent = EquipmentOwner->GetShooterWeaponEquipmentComponent();
 	if (InteractionComponent == nullptr || EquipmentComponent == nullptr)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
