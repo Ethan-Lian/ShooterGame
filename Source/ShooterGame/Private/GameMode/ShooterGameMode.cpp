@@ -3,6 +3,7 @@
 #include "Controller/ShooterPlayerController.h"
 #include "Engine/World.h"
 #include "GameFramework/Controller.h"
+#include "Messages/ShooterGameplayMessageSubsystem.h"
 #include "TimerManager.h"
 #include "PlayerState/ShooterPlayerState.h"
 
@@ -11,6 +12,30 @@ AShooterGameMode::AShooterGameMode()
 	PlayerControllerClass = AShooterPlayerController::StaticClass();
 	DefaultPawnClass = APlayerCharacter::StaticClass();
 	PlayerStateClass = AShooterPlayerState::StaticClass();
+}
+
+void AShooterGameMode::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (UShooterGameplayMessageSubsystem* MessageSubsystem = UShooterGameplayMessageSubsystem::Get(this))
+	{
+		PlayerDeathMessageListenerHandle = MessageSubsystem->RegisterPlayerDeathListener(
+			FShooterPlayerDeathMessageDelegate::FDelegate::CreateUObject(
+				this,
+				&AShooterGameMode::HandlePlayerDeathMessage));
+	}
+}
+
+void AShooterGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UShooterGameplayMessageSubsystem* MessageSubsystem = UShooterGameplayMessageSubsystem::Get(this))
+	{
+		MessageSubsystem->UnregisterPlayerDeathListener(PlayerDeathMessageListenerHandle);
+	}
+
+	PlayerDeathMessageListenerHandle.Reset();
+	Super::EndPlay(EndPlayReason);
 }
 
 void AShooterGameMode::RequestPlayerRespawn(AController* Controller, APlayerCharacter* DeadCharacter)
@@ -37,6 +62,11 @@ void AShooterGameMode::RequestPlayerRespawn(AController* Controller, APlayerChar
 
 	FTimerHandle RespawnTimerHandle;
 	GetWorldTimerManager().SetTimer(RespawnTimerHandle, RespawnDelegate, RespawnDelay, false);
+}
+
+void AShooterGameMode::HandlePlayerDeathMessage(const FShooterPlayerDeathMessage& Message)
+{
+	RequestPlayerRespawn(Message.Controller, Cast<APlayerCharacter>(Message.DeadPawn.Get()));
 }
 
 void AShooterGameMode::HandleRespawnTimerExpired(TWeakObjectPtr<AController> Controller, TWeakObjectPtr<APlayerCharacter> DeadCharacter)
