@@ -13,7 +13,8 @@
 #include "Interfaces/ShooterCombatInterface.h"
 #include "Interfaces/ShooterEquipmentInterface.h"
 #include "Net/UnrealNetwork.h"
-#include "Weapon/ShooterWeaponBase.h"
+#include "Weapon/ShooterWeaponEquipmentActor.h"
+#include "Weapon/ShooterWeaponPickupActor.h"
 #include "Weapon/ShooterWeaponInstance.h"
 
 namespace
@@ -174,7 +175,7 @@ bool UShooterWeaponEquipmentComponent::HandleOwnerDeath()
 		return false;
 	}
 
-	AShooterWeaponBase* EquippedPresentationActor = EquippedWeapon;
+	AShooterWeaponEquipmentActor* EquippedPresentationActor = EquippedWeapon;
 	EquippedWeapon = nullptr;
 	EquippedItemId = INDEX_NONE;
 	ClearEquippedWeaponInstance();
@@ -267,7 +268,7 @@ UShooterAbilitySystemComponent* UShooterWeaponEquipmentComponent::GetOwningShoot
 		: nullptr;
 }
 
-bool UShooterWeaponEquipmentComponent::TryPickupTargetWeapon(AShooterWeaponBase* TargetWeapon)
+bool UShooterWeaponEquipmentComponent::TryPickupTargetWeapon(AShooterWeaponPickupActor* TargetWeapon)
 {
 	AActor* OwnerActor = GetOwner();
 	UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent();
@@ -287,7 +288,7 @@ bool UShooterWeaponEquipmentComponent::TryPickupTargetWeapon(AShooterWeaponBase*
 	// diverge under network latency, causing the view trace to miss the weapon that
 	// the client is legitimately looking at.
 	UShooterWeaponInteractionComponent* InteractionComponent = GetOwningWeaponInteractionComponent();
-	AShooterWeaponBase* ViewTraceWeapon = InteractionComponent != nullptr
+	AShooterWeaponPickupActor* ViewTraceWeapon = InteractionComponent != nullptr
 		? InteractionComponent->FindPickupWeaponFromView()
 		: nullptr;
 
@@ -299,7 +300,7 @@ bool UShooterWeaponEquipmentComponent::TryPickupTargetWeapon(AShooterWeaponBase*
 	}
 
 	// Prefer the view-trace result when it matches; otherwise use the client-supplied target.
-	AShooterWeaponBase* WeaponToPickup = bViewTraceMatches ? ViewTraceWeapon : TargetWeapon;
+	AShooterWeaponPickupActor* WeaponToPickup = bViewTraceMatches ? ViewTraceWeapon : TargetWeapon;
 
 	int32 NewItemId = INDEX_NONE;
 	int32 NewSlotIndex = INDEX_NONE;
@@ -314,7 +315,7 @@ bool UShooterWeaponEquipmentComponent::TryPickupTargetWeapon(AShooterWeaponBase*
 	return EquipInventoryItemById(NewItemId, WeaponToPickup);
 }
 
-bool UShooterWeaponEquipmentComponent::EquipInventoryItemById(int32 ItemId, AShooterWeaponBase* ExistingPresentationActor)
+bool UShooterWeaponEquipmentComponent::EquipInventoryItemById(int32 ItemId, AShooterWeaponPickupActor* ExistingPickupActor)
 {
 	AActor* OwnerActor = GetOwner();
 	ACharacter* OwnerCharacter = GetOwningCharacter();
@@ -330,13 +331,13 @@ bool UShooterWeaponEquipmentComponent::EquipInventoryItemById(int32 ItemId, ASho
 		return false;
 	}
 
-	if (EquippedWeapon != nullptr && EquippedWeapon != ExistingPresentationActor)
+	if (EquippedWeapon != nullptr)
 	{
 		DestroyEquippedWeaponActor();
 	}
 
 	EquippedItemId = InventoryEntry->ItemId;
-	EquippedWeapon = ExistingPresentationActor != nullptr ? ExistingPresentationActor : SpawnEquippedWeaponActor(*InventoryEntry);
+	EquippedWeapon = SpawnEquippedWeaponActor(*InventoryEntry);
 	if (EquippedWeapon == nullptr)
 	{
 		EquippedItemId = INDEX_NONE;
@@ -346,6 +347,10 @@ bool UShooterWeaponEquipmentComponent::EquipInventoryItemById(int32 ItemId, ASho
 
 	EquippedWeapon->SetPickupData(InventoryEntry->ToPickupData());
 	EquippedWeapon->EnterEquippedState(OwnerCharacter);
+	if (ExistingPickupActor != nullptr)
+	{
+		ExistingPickupActor->Destroy();
+	}
 	RefreshEquippedWeaponInstance();
 	return true;
 }
@@ -375,7 +380,7 @@ bool UShooterWeaponEquipmentComponent::DropEquippedWeapon()
 
 	const int32 DroppedSlotIndex = EquippedEntry->SlotIndex;
 	const FTransform DropTransform = GetWeaponDropTransform();
-	AShooterWeaponBase* EquippedPresentationActor = EquippedWeapon;
+	AShooterWeaponEquipmentActor* EquippedPresentationActor = EquippedWeapon;
 	const int32 DroppedItemId = EquippedItemId;
 
 	EquippedWeapon = nullptr;
@@ -414,7 +419,7 @@ bool UShooterWeaponEquipmentComponent::DropEquippedWeapon()
 	return true;
 }
 
-AShooterWeaponBase* UShooterWeaponEquipmentComponent::SpawnEquippedWeaponActor(const FWeaponInventoryEntry& Entry)
+AShooterWeaponEquipmentActor* UShooterWeaponEquipmentComponent::SpawnEquippedWeaponActor(const FWeaponInventoryEntry& Entry)
 {
 	ACharacter* OwnerCharacter = GetOwningCharacter();
 	UWorld* World = GetWorld();
@@ -428,8 +433,8 @@ AShooterWeaponBase* UShooterWeaponEquipmentComponent::SpawnEquippedWeaponActor(c
 	SpawnParameters.Instigator = OwnerCharacter;
 	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	AShooterWeaponBase* SpawnedWeapon = World->SpawnActor<AShooterWeaponBase>(
-		Entry.WeaponActorClass,
+	AShooterWeaponEquipmentActor* SpawnedWeapon = World->SpawnActor<AShooterWeaponEquipmentActor>(
+		Entry.EquipmentActorClass,
 		OwnerCharacter->GetActorTransform(),
 		SpawnParameters);
 	if (SpawnedWeapon != nullptr)
@@ -463,8 +468,8 @@ bool UShooterWeaponEquipmentComponent::SpawnWorldPickupFromEntry(
 	const FTransform GroundedDropTransform = DropMode == EShooterWeaponDropMode::ManualThrow
 		? ResolveBallisticDropTransform(StartDropTransform)
 		: ResolveGroundedDropTransform(ResolveReachableDropTransform(StartDropTransform));
-	AShooterWeaponBase* WorldWeapon = World->SpawnActor<AShooterWeaponBase>(
-		Entry.WeaponActorClass,
+	AShooterWeaponPickupActor* WorldWeapon = World->SpawnActor<AShooterWeaponPickupActor>(
+		Entry.PickupActorClass,
 		GroundedDropTransform,
 		SpawnParameters);
 	if (WorldWeapon == nullptr)
@@ -647,9 +652,9 @@ void UShooterWeaponEquipmentComponent::DestroyEquippedWeaponActor()
 	}
 }
 
-void UShooterWeaponEquipmentComponent::ClearLocalEquippedWeaponPresentation(AShooterWeaponBase* WeaponToClear)
+void UShooterWeaponEquipmentComponent::ClearLocalEquippedWeaponPresentation(AShooterWeaponEquipmentActor* WeaponToClear)
 {
-	AShooterWeaponBase* LocalWeaponToClear = WeaponToClear != nullptr ? WeaponToClear : EquippedWeapon.Get();
+	AShooterWeaponEquipmentActor* LocalWeaponToClear = WeaponToClear != nullptr ? WeaponToClear : EquippedWeapon.Get();
 	if (LocalWeaponToClear != nullptr)
 	{
 		LocalWeaponToClear->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
@@ -736,7 +741,7 @@ FTransform UShooterWeaponEquipmentComponent::GetWeaponDeathDropTransform() const
 	return FTransform(OwnerYawRotation, DropLocation);
 }
 
-bool UShooterWeaponEquipmentComponent::IsValidWorldPickupForPickup(const AShooterWeaponBase* Weapon) const
+bool UShooterWeaponEquipmentComponent::IsValidWorldPickupForPickup(const AShooterWeaponPickupActor* Weapon) const
 {
 	if (Weapon == nullptr)
 	{
@@ -758,7 +763,7 @@ bool UShooterWeaponEquipmentComponent::IsValidWorldPickupForPickup(const AShoote
 	return DistSq <= FMath::Square(PickupFallbackValidationRadius);
 }
 
-void UShooterWeaponEquipmentComponent::OnRep_EquippedWeapon(AShooterWeaponBase* OldEquippedWeapon)
+void UShooterWeaponEquipmentComponent::OnRep_EquippedWeapon(AShooterWeaponEquipmentActor* OldEquippedWeapon)
 {
 	if (OldEquippedWeapon != nullptr && OldEquippedWeapon != EquippedWeapon)
 	{

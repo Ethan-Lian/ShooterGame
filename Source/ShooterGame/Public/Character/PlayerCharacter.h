@@ -10,7 +10,7 @@
 
 class UWidgetComponent;
 class AShooterPlayerState;
-class AShooterWeaponBase;
+class AShooterWeaponEquipmentActor;
 class UAnimMontage;
 class UAbilitySystemComponent;
 class UCameraComponent;
@@ -109,7 +109,7 @@ public:
 
 	// Returns the currently equipped weapon actor.
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
-	AShooterWeaponBase* GetEquippedWeapon() const;
+	AShooterWeaponEquipmentActor* GetEquippedWeapon() const;
 
 	// Returns the logical weapon instance currently driving combat rules.
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")

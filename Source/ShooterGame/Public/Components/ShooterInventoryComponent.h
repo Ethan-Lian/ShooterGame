@@ -1,9 +1,11 @@
 #pragma once
 
 #include "Components/ActorComponent.h"
-#include "Weapon/ShooterWeaponBase.h"
 #include "Weapon/WeaponDataAsset.h"
 #include "ShooterInventoryComponent.generated.h"
+
+class AShooterWeaponEquipmentActor;
+class AShooterWeaponPickupActor;
 
 USTRUCT(BlueprintType)
 struct FWeaponInventoryEntry
@@ -22,9 +24,13 @@ struct FWeaponInventoryEntry
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Shooter|Inventory")
 	TObjectPtr<UWeaponDataAsset> WeaponDefinition;
 
-	// The actor class used when this logical weapon needs a world or equipped presentation actor.
+	// The actor class used when this logical weapon becomes a world pickup.
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Shooter|Inventory")
-	TSubclassOf<AShooterWeaponBase> WeaponActorClass;
+	TSubclassOf<AShooterWeaponPickupActor> PickupActorClass;
+
+	// The actor class used when this logical weapon becomes equipped presentation.
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Shooter|Inventory")
+	TSubclassOf<AShooterWeaponEquipmentActor> EquipmentActorClass;
 
 	// The current ammo stored in the active magazine.
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Shooter|Inventory")
@@ -35,20 +41,10 @@ struct FWeaponInventoryEntry
 	int32 CurrentReserveAmmo = 0;
 
 	// Returns whether this entry contains a usable logical weapon.
-	bool IsValid() const
-	{
-		return ItemId != INDEX_NONE && SlotIndex != INDEX_NONE && WeaponDefinition != nullptr && WeaponActorClass != nullptr;
-	}
+	bool IsValid() const;
 
 	// Builds the world/equipment pickup snapshot consumed by presentation actors.
-	FWeaponPickupData ToPickupData() const
-	{
-		FWeaponPickupData PickupData;
-		PickupData.WeaponDefinition = WeaponDefinition;
-		PickupData.CurrentMagazineAmmo = CurrentMagazineAmmo;
-		PickupData.CurrentReserveAmmo = CurrentReserveAmmo;
-		return PickupData;
-	}
+	FWeaponPickupData ToPickupData() const;
 };
 
 UCLASS(ClassGroup = (ShooterGame), Blueprintable, BlueprintType, meta = (BlueprintSpawnableComponent))
@@ -82,7 +78,7 @@ public:
 	int32 FindNextOccupiedSlotIndex(int32 CurrentSlotIndex, bool bForward) const;
 
 	// Adds a world pickup actor into the owner's logical inventory.
-	bool AddWeaponFromPickup(AShooterWeaponBase* PickupWeapon, int32& OutItemId, int32& OutSlotIndex);
+	bool AddWeaponFromPickup(AShooterWeaponPickupActor* PickupWeapon, int32& OutItemId, int32& OutSlotIndex);
 
 	// Removes a logical weapon entry from the inventory by item id.
 	bool RemoveWeaponByItemId(int32 ItemId, FWeaponInventoryEntry& OutRemovedEntry);
@@ -101,7 +97,7 @@ private:
 	int32 FindFirstFreeSlotIndex() const;
 
 	// Builds a logical inventory entry from a replicated world pickup actor.
-	bool BuildInventoryEntryFromPickup(AShooterWeaponBase* PickupWeapon, int32 SlotIndex, FWeaponInventoryEntry& OutEntry) const;
+	bool BuildInventoryEntryFromPickup(AShooterWeaponPickupActor* PickupWeapon, int32 SlotIndex, FWeaponInventoryEntry& OutEntry) const;
 
 	// Refreshes owner-side cached weapon views after the replicated inventory changes.
 	UFUNCTION()

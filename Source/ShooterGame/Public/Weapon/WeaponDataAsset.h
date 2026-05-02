@@ -5,6 +5,8 @@
 #include "WeaponDataAsset.generated.h"
 
 class AShooterProjectileBase;
+class AShooterWeaponEquipmentActor;
+class AShooterWeaponPickupActor;
 class UGameplayEffect;
 class UNiagaraSystem;
 class USoundBase;
@@ -97,6 +99,12 @@ class SHOOTERGAME_API UWeaponDataAsset : public UPrimaryDataAsset
 public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	TSoftObjectPtr<UStaticMesh> WeaponMesh;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	TSubclassOf<AShooterWeaponPickupActor> PickupActorClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	TSubclassOf<AShooterWeaponEquipmentActor> EquipmentActorClass;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	FName CharacterAttachSocketName = TEXT("hand_r");

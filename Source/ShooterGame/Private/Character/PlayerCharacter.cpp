@@ -18,7 +18,7 @@
 #include "HUD/ShooterHUD.h"
 #include "PlayerState/ShooterPlayerState.h"
 #include "ShooterGame.h"
-#include "Weapon/ShooterWeaponBase.h"
+#include "Weapon/ShooterWeaponEquipmentActor.h"
 #include "Weapon/ShooterWeaponInstance.h"
 
 APlayerCharacter::APlayerCharacter()
@@ -201,7 +201,7 @@ UAbilitySystemComponent* APlayerCharacter::GetShooterAbilitySystemComponent() co
 	return GetAbilitySystemComponent();
 }
 
-AShooterWeaponBase* APlayerCharacter::GetEquippedWeapon() const
+AShooterWeaponEquipmentActor* APlayerCharacter::GetEquippedWeapon() const
 {
 	return WeaponEquipmentComponent != nullptr ? WeaponEquipmentComponent->GetEquippedWeapon() : nullptr;
 }

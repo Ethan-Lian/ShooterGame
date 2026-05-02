@@ -3,7 +3,7 @@
 #include "Components/ActorComponent.h"
 #include "ShooterWeaponInteractionComponent.generated.h"
 
-class AShooterWeaponBase;
+class AShooterWeaponPickupActor;
 class UShooterCombatComponent;
 class UShooterWeaponEquipmentComponent;
 struct FHitResult;
@@ -21,13 +21,13 @@ public:
 
 	// Returns the currently targeted world weapon for local pickup interaction.
 	UFUNCTION(BlueprintPure, Category = "Shooter|Combat")
-	AShooterWeaponBase* GetCurrentTargetedPickupWeapon() const { return CurrentTargetedPickupWeapon.Get(); }
+	AShooterWeaponPickupActor* GetCurrentTargetedPickupWeapon() const { return CurrentTargetedPickupWeapon.Get(); }
 
 	// Returns the valid world weapon currently under the view trace.
-	AShooterWeaponBase* FindPickupWeaponFromView() const;
+	AShooterWeaponPickupActor* FindPickupWeaponFromView() const;
 
 	// Validates whether a weapon can currently be picked up by the owning character.
-	bool CanPickupWeapon(const AShooterWeaponBase* WeaponToPickup) const;
+	bool CanPickupWeapon(const AShooterWeaponPickupActor* WeaponToPickup) const;
 
 	// Resolves start and end points for crosshair-driven view traces.
 	bool GetViewTracePoints(float TraceDistance, FVector& OutTraceStart, FVector& OutTraceEnd) const;
@@ -55,10 +55,10 @@ private:
 	void RefreshTargetedPickupWeapon();
 
 	// Applies widget visibility changes when the targeted weapon changes.
-	void SetTargetedPickupWeapon(AShooterWeaponBase* NewTargetWeapon);
+	void SetTargetedPickupWeapon(AShooterWeaponPickupActor* NewTargetWeapon);
 
 	// The single local world weapon currently targeted by the center-screen trace.
-	TWeakObjectPtr<AShooterWeaponBase> CurrentTargetedPickupWeapon;
+	TWeakObjectPtr<AShooterWeaponPickupActor> CurrentTargetedPickupWeapon;
 
 	// Limits how far away a world weapon can be for pickup interactions.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true", ClampMin = "0.0"))

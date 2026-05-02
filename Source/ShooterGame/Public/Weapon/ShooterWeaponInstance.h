@@ -5,7 +5,7 @@
 #include "Components/ShooterInventoryComponent.h"
 #include "ShooterWeaponInstance.generated.h"
 
-class AShooterWeaponBase;
+class AShooterWeaponEquipmentActor;
 
 UCLASS(BlueprintType)
 class SHOOTERGAME_API UShooterWeaponInstance : public UObject
@@ -14,7 +14,7 @@ class SHOOTERGAME_API UShooterWeaponInstance : public UObject
 
 public:
 	// Initializes the instance from the current logical inventory entry plus presentation actor.
-	void InitializeFromInventoryEntry(const FWeaponInventoryEntry& SourceEntry, AShooterWeaponBase* InEquippedWeaponActor);
+	void InitializeFromInventoryEntry(const FWeaponInventoryEntry& SourceEntry, AShooterWeaponEquipmentActor* InEquippedWeaponActor);
 
 	// Returns the source definition asset when the weapon originated from data.
 	const UWeaponDataAsset* GetWeaponDefinition() const { return WeaponDefinition; }
@@ -32,10 +32,10 @@ public:
 	int32 GetSlotIndex() const { return SlotIndex; }
 
 	// Returns the currently equipped presentation actor backing this instance.
-	AShooterWeaponBase* GetEquippedWeaponActor() const { return EquippedWeaponActor.Get(); }
+	AShooterWeaponEquipmentActor* GetEquippedWeaponActor() const { return EquippedWeaponActor.Get(); }
 
 	// Updates which world/equipped actor currently presents this logical weapon instance.
-	void SetEquippedWeaponActor(AShooterWeaponBase* NewEquippedWeaponActor);
+	void SetEquippedWeaponActor(AShooterWeaponEquipmentActor* NewEquippedWeaponActor);
 
 	// Clears the current equipped actor reference when the weapon leaves the avatar.
 	void ClearEquippedWeaponActor();
@@ -70,7 +70,7 @@ private:
 
 	// The actor class used when this logical weapon needs a presentation actor.
 	UPROPERTY(Transient)
-	TSubclassOf<AShooterWeaponBase> WeaponActorClass;
+	TSubclassOf<AShooterWeaponEquipmentActor> EquipmentActorClass;
 
 	// Static fire config snapshot copied at equip time for definition-driven logic.
 	UPROPERTY(Transient)
@@ -90,7 +90,7 @@ private:
 
 	// The actor currently presenting this weapon while equipped on the avatar.
 	UPROPERTY(Transient)
-	TObjectPtr<AShooterWeaponBase> EquippedWeaponActor;
+	TObjectPtr<AShooterWeaponEquipmentActor> EquippedWeaponActor;
 
 	// Current magazine ammo seeded from the definition for later gameplay expansion.
 	UPROPERTY(Transient)

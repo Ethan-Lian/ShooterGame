@@ -5,12 +5,31 @@
 #include "Interfaces/ShooterEquipmentInterface.h"
 #include "Net/UnrealNetwork.h"
 #include "PlayerState/ShooterPlayerState.h"
-#include "Weapon/ShooterWeaponBase.h"
+#include "Weapon/ShooterWeaponEquipmentActor.h"
+#include "Weapon/ShooterWeaponPickupActor.h"
 
 UShooterInventoryComponent::UShooterInventoryComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);
+}
+
+bool FWeaponInventoryEntry::IsValid() const
+{
+	return ItemId != INDEX_NONE
+		&& SlotIndex != INDEX_NONE
+		&& WeaponDefinition != nullptr
+		&& PickupActorClass != nullptr
+		&& EquipmentActorClass != nullptr;
+}
+
+FWeaponPickupData FWeaponInventoryEntry::ToPickupData() const
+{
+	FWeaponPickupData PickupData;
+	PickupData.WeaponDefinition = WeaponDefinition;
+	PickupData.CurrentMagazineAmmo = CurrentMagazineAmmo;
+	PickupData.CurrentReserveAmmo = CurrentReserveAmmo;
+	return PickupData;
 }
 
 void UShooterInventoryComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -72,7 +91,7 @@ int32 UShooterInventoryComponent::FindNextOccupiedSlotIndex(int32 CurrentSlotInd
 	return INDEX_NONE;
 }
 
-bool UShooterInventoryComponent::AddWeaponFromPickup(AShooterWeaponBase* PickupWeapon, int32& OutItemId, int32& OutSlotIndex)
+bool UShooterInventoryComponent::AddWeaponFromPickup(AShooterWeaponPickupActor* PickupWeapon, int32& OutItemId, int32& OutSlotIndex)
 {
 	OutItemId = INDEX_NONE;
 	OutSlotIndex = INDEX_NONE;
@@ -155,7 +174,7 @@ int32 UShooterInventoryComponent::FindFirstFreeSlotIndex() const
 	return INDEX_NONE;
 }
 
-bool UShooterInventoryComponent::BuildInventoryEntryFromPickup(AShooterWeaponBase* PickupWeapon, int32 SlotIndex, FWeaponInventoryEntry& OutEntry) const
+bool UShooterInventoryComponent::BuildInventoryEntryFromPickup(AShooterWeaponPickupActor* PickupWeapon, int32 SlotIndex, FWeaponInventoryEntry& OutEntry) const
 {
 	if (PickupWeapon == nullptr || SlotIndex == INDEX_NONE)
 	{
@@ -171,14 +190,16 @@ bool UShooterInventoryComponent::BuildInventoryEntryFromPickup(AShooterWeaponBas
 	OutEntry = FWeaponInventoryEntry();
 	OutEntry.SlotIndex = SlotIndex;
 	OutEntry.WeaponDefinition = PickupData.WeaponDefinition;
-	OutEntry.WeaponActorClass = PickupWeapon->GetClass();
+	OutEntry.PickupActorClass = PickupWeapon->GetPickupActorClass();
+	OutEntry.EquipmentActorClass = PickupWeapon->GetEquipmentActorClass();
 	OutEntry.CurrentMagazineAmmo = PickupData.CurrentMagazineAmmo;
 	OutEntry.CurrentReserveAmmo = PickupData.CurrentReserveAmmo;
 
 	// ItemId is assigned by AddWeaponFromPickup after the entry skeleton has been built.
 	return OutEntry.SlotIndex != INDEX_NONE
 		&& OutEntry.WeaponDefinition != nullptr
-		&& OutEntry.WeaponActorClass != nullptr;
+		&& OutEntry.PickupActorClass != nullptr
+		&& OutEntry.EquipmentActorClass != nullptr;
 }
 
 void UShooterInventoryComponent::OnRep_InventoryEntries()

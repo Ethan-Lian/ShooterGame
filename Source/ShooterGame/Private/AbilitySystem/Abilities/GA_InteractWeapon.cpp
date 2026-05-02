@@ -3,6 +3,7 @@
 #include "Components/ShooterWeaponEquipmentComponent.h"
 #include "Components/ShooterWeaponInteractionComponent.h"
 #include "Interfaces/ShooterEquipmentInterface.h"
+#include "Weapon/ShooterWeaponPickupActor.h"
 
 UGA_InteractWeapon::UGA_InteractWeapon()
 {
@@ -35,7 +36,7 @@ void UGA_InteractWeapon::ActivateAbility(
 		return;
 	}
 
-	AShooterWeaponBase* TargetWeapon = InteractionComponent->FindPickupWeaponFromView();
+	AShooterWeaponPickupActor* TargetWeapon = InteractionComponent->FindPickupWeaponFromView();
 	if (TargetWeapon != nullptr)
 	{
 		EquipmentComponent->TryPickupTargetWeapon(TargetWeapon);

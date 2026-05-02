@@ -10,7 +10,8 @@
 #include "GameFramework/Pawn.h"
 #include "Interfaces/ShooterCombatInterface.h"
 #include "Interfaces/ShooterEquipmentInterface.h"
-#include "Weapon/ShooterWeaponBase.h"
+#include "Weapon/ShooterWeaponEquipmentActor.h"
+#include "Weapon/ShooterWeaponPickupActor.h"
 #include "WorldCollision.h"
 
 UShooterWeaponInteractionComponent::UShooterWeaponInteractionComponent()
@@ -33,7 +34,7 @@ void UShooterWeaponInteractionComponent::TickComponent(float DeltaTime, ELevelTi
 	RefreshTargetedPickupWeapon();
 }
 
-AShooterWeaponBase* UShooterWeaponInteractionComponent::FindPickupWeaponFromView() const
+AShooterWeaponPickupActor* UShooterWeaponInteractionComponent::FindPickupWeaponFromView() const
 {
 	FHitResult HitResult;
 	if (!TracePickupView(HitResult))
@@ -41,11 +42,11 @@ AShooterWeaponBase* UShooterWeaponInteractionComponent::FindPickupWeaponFromView
 		return nullptr;
 	}
 
-	AShooterWeaponBase* HitWeapon = Cast<AShooterWeaponBase>(HitResult.GetActor());
+	AShooterWeaponPickupActor* HitWeapon = Cast<AShooterWeaponPickupActor>(HitResult.GetActor());
 	return CanPickupWeapon(HitWeapon) ? HitWeapon : nullptr;
 }
 
-bool UShooterWeaponInteractionComponent::CanPickupWeapon(const AShooterWeaponBase* WeaponToPickup) const
+bool UShooterWeaponInteractionComponent::CanPickupWeapon(const AShooterWeaponPickupActor* WeaponToPickup) const
 {
 	const AActor* OwnerActor = GetOwner();
 	const UShooterWeaponEquipmentComponent* EquipmentComponent = GetOwningWeaponEquipmentComponent();
@@ -54,7 +55,7 @@ bool UShooterWeaponInteractionComponent::CanPickupWeapon(const AShooterWeaponBas
 		return false;
 	}
 
-	if (!WeaponToPickup->IsPickupInteractionEnabled() || WeaponToPickup == EquipmentComponent->GetEquippedWeapon())
+	if (!WeaponToPickup->IsPickupInteractionEnabled())
 	{
 		return false;
 	}
@@ -130,7 +131,7 @@ bool UShooterWeaponInteractionComponent::TracePickupView(FHitResult& OutHitResul
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(PlayerWeaponPickupViewTrace), false, OwnerPawn);
 	QueryParams.AddIgnoredActor(OwnerPawn);
 
-	if (AShooterWeaponBase* EquippedWeapon = EquipmentComponent->GetEquippedWeapon())
+	if (AShooterWeaponEquipmentActor* EquippedWeapon = EquipmentComponent->GetEquippedWeapon())
 	{
 		QueryParams.AddIgnoredActor(EquippedWeapon);
 	}
@@ -179,9 +180,9 @@ void UShooterWeaponInteractionComponent::RefreshTargetedPickupWeapon()
 	SetTargetedPickupWeapon(FindPickupWeaponFromView());
 }
 
-void UShooterWeaponInteractionComponent::SetTargetedPickupWeapon(AShooterWeaponBase* NewTargetWeapon)
+void UShooterWeaponInteractionComponent::SetTargetedPickupWeapon(AShooterWeaponPickupActor* NewTargetWeapon)
 {
-	AShooterWeaponBase* PreviousWeapon = CurrentTargetedPickupWeapon.Get();
+	AShooterWeaponPickupActor* PreviousWeapon = CurrentTargetedPickupWeapon.Get();
 	if (PreviousWeapon == NewTargetWeapon)
 	{
 		if (NewTargetWeapon != nullptr)

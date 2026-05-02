@@ -4,7 +4,8 @@
 #include "ShooterWeaponEquipmentComponent.generated.h"
 
 class ACharacter;
-class AShooterWeaponBase;
+class AShooterWeaponEquipmentActor;
+class AShooterWeaponPickupActor;
 class UShooterAbilitySystemComponent;
 class UShooterCombatComponent;
 class UShooterInventoryComponent;
@@ -31,7 +32,7 @@ public:
 
 	// Returns the weapon presentation actor currently attached to the owning character.
 	UFUNCTION(BlueprintPure, Category = "Shooter|Combat")
-	AShooterWeaponBase* GetEquippedWeapon() const { return EquippedWeapon; }
+	AShooterWeaponEquipmentActor* GetEquippedWeapon() const { return EquippedWeapon; }
 
 	// Returns the logical weapon instance currently resolved from the equipped inventory entry.
 	UFUNCTION(BlueprintPure, Category = "Shooter|Combat")
@@ -63,7 +64,7 @@ public:
 	void HandleInventoryReplicated();
 
 	// Tries to add and equip the world weapon currently validated under the crosshair.
-	bool TryPickupTargetWeapon(AShooterWeaponBase* TargetWeapon);
+	bool TryPickupTargetWeapon(AShooterWeaponPickupActor* TargetWeapon);
 
 	// Drops the equipped weapon into the world on the authority path.
 	bool DropEquippedWeapon();
@@ -88,10 +89,10 @@ private:
 	UShooterAbilitySystemComponent* GetOwningShooterAbilitySystemComponent() const;
 
 	// Equips the logical inventory entry addressed by its stable item id.
-	bool EquipInventoryItemById(int32 ItemId, AShooterWeaponBase* ExistingPresentationActor = nullptr);
+	bool EquipInventoryItemById(int32 ItemId, AShooterWeaponPickupActor* ExistingPickupActor = nullptr);
 
 	// Spawns a fresh equipped presentation actor for the supplied logical inventory entry.
-	AShooterWeaponBase* SpawnEquippedWeaponActor(const FWeaponInventoryEntry& Entry);
+	AShooterWeaponEquipmentActor* SpawnEquippedWeaponActor(const FWeaponInventoryEntry& Entry);
 
 	// Spawns a fresh world pickup actor from the supplied logical inventory entry.
 	bool SpawnWorldPickupFromEntry(const FWeaponInventoryEntry& Entry, const FTransform& DropTransform, EShooterWeaponDropMode DropMode);
@@ -109,7 +110,7 @@ private:
 	void DestroyEquippedWeaponActor();
 
 	// Removes a stale local equipped presentation when replicated state has moved on.
-	void ClearLocalEquippedWeaponPresentation(AShooterWeaponBase* WeaponToClear = nullptr);
+	void ClearLocalEquippedWeaponPresentation(AShooterWeaponEquipmentActor* WeaponToClear = nullptr);
 
 	// Rebuilds the logical weapon instance from the current equipped inventory item.
 	void RefreshEquippedWeaponInstance();
@@ -124,11 +125,11 @@ private:
 	FTransform GetWeaponDeathDropTransform() const;
 
 	// Validates that a weapon is still a legitimate world pickup within interaction range.
-	bool IsValidWorldPickupForPickup(const AShooterWeaponBase* Weapon) const;
+	bool IsValidWorldPickupForPickup(const AShooterWeaponPickupActor* Weapon) const;
 
 	// Reattaches the replicated weapon pointer on remote clients.
 	UFUNCTION()
-	void OnRep_EquippedWeapon(AShooterWeaponBase* OldEquippedWeapon);
+	void OnRep_EquippedWeapon(AShooterWeaponEquipmentActor* OldEquippedWeapon);
 
 	// Rebuilds the owner-side logical weapon view when the equipped item id changes.
 	UFUNCTION()
@@ -140,7 +141,7 @@ private:
 
 	// Replicated weapon pointer used by remote attachment logic and weapon presentation.
 	UPROPERTY(ReplicatedUsing = OnRep_EquippedWeapon, VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<AShooterWeaponBase> EquippedWeapon;
+	TObjectPtr<AShooterWeaponEquipmentActor> EquippedWeapon;
 
 	// Replicated logical inventory id currently equipped by this pawn.
 	UPROPERTY(ReplicatedUsing = OnRep_EquippedItemId, VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
