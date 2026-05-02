@@ -3,7 +3,6 @@
 #include "AbilitySystemInterface.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "GameplayCueInterface.h"
 #include "PlayerCharacter.generated.h"
 
 class UWidgetComponent;
@@ -12,7 +11,6 @@ class AShooterWeaponBase;
 class UAnimMontage;
 class UAbilitySystemComponent;
 class UCameraComponent;
-class UParticleSystem;
 class UShooterCombatComponent;
 class UShooterHealthComponent;
 class UShooterInventoryComponent;
@@ -20,12 +18,11 @@ class UShooterMovementStateComponent;
 class UShooterWeaponEquipmentComponent;
 class UShooterWeaponInteractionComponent;
 class UShooterWeaponInstance;
-class USoundBase;
 class USpringArmComponent;
 struct FGameplayEventData;
 
 UCLASS()
-class SHOOTERGAME_API APlayerCharacter : public ACharacter, public IAbilitySystemInterface, public IGameplayCueInterface
+class SHOOTERGAME_API APlayerCharacter : public ACharacter, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -90,9 +87,6 @@ public:
 
 	// Returns the combat ASC hosted by this player's PlayerState.
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
-
-	// Receives GameplayCue callbacks routed to the avatar actor.
-	virtual void GameplayCueDefaultHandler(EGameplayCueEvent::Type EventType, const FGameplayCueParameters& Parameters) override;
 
 	// Initializes ASC actor info when the character becomes possessed.
 	virtual void PossessedBy(AController* NewController) override;
@@ -176,14 +170,6 @@ protected:
 	// Binds health delegates once components are ready.
 	virtual void BeginPlay() override;
 
-	// Optional particle effect played when the damage GameplayCue executes.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat")
-	TObjectPtr<UParticleSystem> DamageHitEffect;
-
-	// Optional sound played when the damage GameplayCue executes.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat")
-	TObjectPtr<USoundBase> DamageHitSound;
-
 	// Optional animation montage played once when this pawn enters the dead state.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Death")
 	TObjectPtr<UAnimMontage> DeathMontage;
@@ -227,12 +213,6 @@ private:
 	
 	// Links the pawn avatar to the PlayerState-owned ASC and initializes health bindings.
 	void InitializeAbilitySystemActorInfo();
-
-	// Handles damage-hit GameplayCues emitted by GAS.
-	void HandleDamageHitGameplayCue(const FGameplayCueParameters& Parameters);
-
-	// Handles weapon-fire GameplayCues emitted once for each successful shot.
-	void HandleWeaponFireGameplayCue(const FGameplayCueParameters& Parameters);
 
 	// Mirrors health changes for logging or future HUD hooks.
 	UFUNCTION()

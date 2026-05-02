@@ -1,5 +1,4 @@
 #include "Character/PlayerCharacter.h"
-#include "AbilitySystem/ShooterGameplayTags.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -9,26 +8,17 @@
 #include "Components/ShooterInventoryComponent.h"
 #include "Components/ShooterMovementStateComponent.h"
 #include "Components/ShooterWeaponInteractionComponent.h"
-#include "Components/StaticMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "HUD/ShooterHUD.h"
-#include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
-#include "NiagaraFunctionLibrary.h"
-#include "Particles/ParticleSystem.h"
 #include "PlayerState/ShooterPlayerState.h"
 #include "ShooterGame.h"
-#include "Sound/SoundBase.h"
 #include "Weapon/ShooterWeaponBase.h"
 #include "Weapon/ShooterWeaponInstance.h"
-
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-#include "DrawDebugHelpers.h"
-#endif
 
 APlayerCharacter::APlayerCharacter()
 {
@@ -248,23 +238,6 @@ void APlayerCharacter::HandleAimStateChanged(bool bIsNowAiming)
 	MovementComponent->bOrientRotationToMovement = !bIsNowAiming;
 }
 
-void APlayerCharacter::GameplayCueDefaultHandler(EGameplayCueEvent::Type EventType, const FGameplayCueParameters& Parameters)
-{
-	if (Parameters.OriginalTag == TAG_GameplayCue_Damage_Hit || Parameters.MatchedTagName == TAG_GameplayCue_Damage_Hit)
-	{
-		HandleDamageHitGameplayCue(Parameters);
-		return;
-	}
-
-	if (Parameters.OriginalTag == TAG_GameplayCue_Weapon_Fire || Parameters.MatchedTagName == TAG_GameplayCue_Weapon_Fire)
-	{
-		HandleWeaponFireGameplayCue(Parameters);
-		return;
-	}
-	
-	IGameplayCueInterface::GameplayCueDefaultHandler(EventType, Parameters);
-}
-
 void APlayerCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
@@ -327,88 +300,6 @@ void APlayerCharacter::InitializeAbilitySystemActorInfo()
 			{
 				ShooterHUD->SetObservedPawn(this);
 			}
-		}
-	}
-}
-
-void APlayerCharacter::HandleDamageHitGameplayCue(const FGameplayCueParameters& Parameters)
-{
-	const FHitResult* HitResult = Parameters.EffectContext.GetHitResult();
-	const FVector ImpactLocation = HitResult != nullptr ? FVector(HitResult->ImpactPoint) : GetActorLocation();
-
-	if (DamageHitEffect != nullptr)
-	{
-		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), DamageHitEffect, ImpactLocation);
-	}
-
-	if (DamageHitSound != nullptr)
-	{
-		UGameplayStatics::PlaySoundAtLocation(this, DamageHitSound, ImpactLocation);
-	}
-
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	DrawDebugSphere(GetWorld(), ImpactLocation, 12.f, 12, FColor::Red, false, 1.0f);
-#endif
-}
-
-void APlayerCharacter::HandleWeaponFireGameplayCue(const FGameplayCueParameters& Parameters)
-{
-	const UShooterWeaponInstance* EquippedWeaponInstance = GetEquippedWeaponInstance();
-	AShooterWeaponBase* EquippedWeapon = GetEquippedWeapon();
-	if (EquippedWeaponInstance == nullptr && EquippedWeapon == nullptr)
-	{
-		return;
-	}
-
-	const FWeaponFireConfig& FireConfig = EquippedWeaponInstance != nullptr
-		? EquippedWeaponInstance->GetFireConfig()
-		: EquippedWeapon->GetFireConfig();
-	const FTransform MuzzleTransform = EquippedWeapon != nullptr
-		? EquippedWeapon->GetMuzzleTransform()
-		: FTransform(Parameters.Normal.Rotation(), Parameters.Location);
-	UStaticMeshComponent* WeaponMesh = EquippedWeapon != nullptr ? EquippedWeapon->GetWeaponMesh() : nullptr;
-	const bool bHasMuzzleSocket = WeaponMesh != nullptr
-		&& !FireConfig.MuzzleSocketName.IsNone()
-		&& WeaponMesh->DoesSocketExist(FireConfig.MuzzleSocketName);
-
-	if (FireConfig.MuzzleFlashEffect != nullptr)
-	{
-		if (bHasMuzzleSocket)
-		{
-			UNiagaraFunctionLibrary::SpawnSystemAttached(
-				FireConfig.MuzzleFlashEffect,
-				WeaponMesh,
-				FireConfig.MuzzleSocketName,
-				FVector::ZeroVector,
-				FRotator::ZeroRotator,
-				EAttachLocation::SnapToTarget,
-				true);
-		}
-		else
-		{
-			UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-				GetWorld(),
-				FireConfig.MuzzleFlashEffect,
-				MuzzleTransform.GetLocation(),
-				MuzzleTransform.GetRotation().Rotator());
-		}
-	}
-
-	if (FireConfig.FireSound != nullptr)
-	{
-		if (bHasMuzzleSocket)
-		{
-			UGameplayStatics::SpawnSoundAttached(
-				FireConfig.FireSound,
-				WeaponMesh,
-				FireConfig.MuzzleSocketName,
-				FVector::ZeroVector,
-				FRotator::ZeroRotator,
-				EAttachLocation::SnapToTarget);
-		}
-		else
-		{
-			UGameplayStatics::PlaySoundAtLocation(this, FireConfig.FireSound, MuzzleTransform.GetLocation());
 		}
 	}
 }
