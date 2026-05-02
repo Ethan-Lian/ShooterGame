@@ -10,13 +10,14 @@ Demo 视频 / GIF 暂未放入公开仓库。
 
 - ShooterGame 是一个个人开发的多人射击项目。它的目标不是只把角色、武器和 UI 跑起来，而是把常见射击玩法拆成可以长期迭代的系统边界：玩家长期状态、当前 Pawn 表现、武器逻辑、GAS 能力、伤害流程和联机会话各自承担清晰职责。
 
-- 项目当前已经形成一个 V1 玩法闭环：玩家可以移动、瞄准、冲刺、拾取武器、装备/切换/丢弃武器，使用命中扫描或投射物武器造成 GAS 伤害，并在死亡后经历状态清理和重生流程。
+- 项目当前已经形成一个 V1 玩法闭环：玩家可以移动、瞄准、冲刺、拾取武器、装备/切换/丢弃武器，使用命中扫描或投射物武器造成 GAS 伤害，并通过 GameplayCue 播放命中/开火表现，在死亡后经历状态清理和重生流程。
 
 - 架构上:
 `PlayerState` 负责跨 Pawn 生命周期存在的玩家状态
 `Character` 负责当前身体和表现
-`Components`负责局部 Gameplay 能力
-`GameplayAbilitySystem` 负责能力激活、属性修改和状态标记
+`Components` 负责局部 Gameplay 能力
+`GameplayAbilitySystem` 负责输入意图分发、能力激活、属性修改和状态标记
+`Messages` 负责把死亡等跨系统事件从 Ability 发送到规则层
 
 ## Features
 
@@ -24,6 +25,9 @@ Demo 视频 / GIF 暂未放入公开仓库。
 - Weapon loop: 拾取、装备、切换、丢弃、死亡掉落
 - Combat paths: 命中扫描武器和投射物武器
 - GAS damage: 属性、伤害执行、死亡状态、移动速度效果
+- Gameplay cues: 命中特效、枪口特效和开火音效由独立 GameplayCueNotify 处理
+- Ability input tags: Fire / Sprint / Interact / Drop 通过输入 GameplayTag 路由到 Ability
+- Owner interfaces: Combat / Equipment 组件通过 Owner Interface 获取依赖，降低对 `PlayerCharacter` 的硬编码
 - Respawn flow: 死亡表现、状态清理、重生前属性恢复
 - Multiplayer flow: Steam Session / Lobby 原型插件
 - Gameplay UI adapters: 生命值、准星、拾取提示等 C++ 适配层
@@ -45,10 +49,22 @@ Demo 视频 / GIF 暂未放入公开仓库。
 5. **Unified fire ability**  
    `GA_FireWeapon` 统一开火入口，再根据武器配置分发命中扫描或投射物路径。
 
-6. **Componentized Character responsibilities**  
-   战斗、生命、移动、库存、装备、交互检测拆到独立组件，减少 `Character` 膨胀。
+6. **GameplayCue presentation layer**  
+   命中和武器开火表现从 `PlayerCharacter` 移到 `GameplayCueNotify_Burst` 子类，角色不再承担特效/音效分发职责。
 
-7. **Session system as plugin**  
+7. **InputTag-driven Ability activation**  
+   `UShooterAbilitySystemComponent` 通过 `Input.*` GameplayTag 查找并激活 Ability，让组件只表达输入意图，而不是直接按 AbilityTag 激活或取消能力。
+
+8. **Componentized Character responsibilities**  
+   战斗、生命、移动、库存、装备、交互检测拆到独立组件；Combat / Equipment 组件通过 Owner Interface 访问 ASC、库存、装备和交互组件，避免把组件写死在 `APlayerCharacter` 上。
+
+9. **GameplayTag-driven death state**  
+   死亡状态不再由 `APlayerCharacter` 复制 `bIsDead`，而是由 `State.Dead` GameplayTag 驱动。Pawn 监听 ASC Tag 变化，只负责播放死亡表现和关闭当前身体。
+
+10. **Gameplay message respawn boundary**  
+   `GA_Death` 应用死亡状态后广播 `Message.Player.Death`，`ShooterGameMode` 订阅消息并安排重生。Ability 不再直接调用 GameMode。
+
+11. **Session system as plugin**  
    Steam Session / Lobby 流程放在 `MultiplayerSession` 插件里，与核心战斗代码保持边界。
 
 ## Architecture
@@ -56,8 +72,10 @@ Demo 视频 / GIF 暂未放入公开仓库。
 ```mermaid
 flowchart TD
     PC["PlayerController<br/>input binding"] --> CH["PlayerCharacter<br/>avatar + presentation"]
-    PS["ShooterPlayerState<br/>long-lived player state"] --> ASC["AbilitySystemComponent<br/>abilities + attributes + tags"]
+    PS["ShooterPlayerState<br/>long-lived player state"] --> ASC["ShooterAbilitySystemComponent<br/>abilities + attributes + input tags"]
     PS --> INV["ShooterInventoryComponent<br/>logical weapon inventory"]
+    CH -. "IShooterCombatInterface" .-> COMBAT_IF["Combat owner API<br/>ASC + combat + movement"]
+    CH -. "IShooterEquipmentInterface" .-> EQUIP_IF["Equipment owner API<br/>inventory + equipment + interaction"]
     CH --> COMBAT["ShooterCombatComponent<br/>fire + aim state"]
     CH --> MOVE["ShooterMovementStateComponent<br/>sprint + movement attrs"]
     CH --> EQUIP["ShooterWeaponEquipmentComponent<br/>equipped item + weapon actor"]
@@ -65,9 +83,13 @@ flowchart TD
     EQUIP --> INV
     EQUIP --> WEAPON["ShooterWeaponBase<br/>world/equipped presentation"]
     COMBAT --> ASC
-    ASC --> ABILITY["GameplayAbilities<br/>fire / sprint / death"]
+    ASC --> ABILITY["GameplayAbilities<br/>fire / sprint / interact / drop / death"]
     ABILITY --> EFFECT["GameplayEffects<br/>damage / death / speed"]
     EFFECT --> ATTR["AttributeSets<br/>combat + movement"]
+    ABILITY --> CUE["GameplayCueNotify<br/>hit + weapon fire presentation"]
+    ABILITY --> DEATH["GA_Death<br/>apply State.Dead"]
+    DEATH --> MSG["ShooterGameplayMessageSubsystem<br/>Message.Player.Death"]
+    MSG --> GM["ShooterGameMode<br/>respawn scheduling"]
     SESSION["MultiplayerSession Plugin<br/>Steam session + lobby"] --> PC
 ```
 
@@ -77,9 +99,12 @@ flowchart TD
 Source/
   ShooterGame/
     AbilitySystem/     GAS abilities, effects, attributes, tags
+      GameplayCues/    GameplayCueNotify classes for combat presentation
     Character/         Player pawn, ASC avatar binding
     Components/        Combat, health, movement, inventory, equipment
+    Interfaces/        Owner-facing component contracts
     GameMode/          Death and respawn rules
+    Messages/          World-level gameplay event broadcasts
     PlayerState/       ASC, attributes, long-lived player state
     Weapon/            Weapon actor, instance, data model
 
@@ -93,10 +118,16 @@ Config/                UE project configuration
 ## Code Entry Points
 
 - `Source/ShooterGame/Public/PlayerState/ShooterPlayerState.h`  
-  ASC、属性集、库存组件的长期所有者。
+  ASC、属性集、库存组件和启动 Ability 授权的长期所有者。
+
+- `Source/ShooterGame/Public/AbilitySystem/ShooterAbilitySystemComponent.h`  
+  通过输入 GameplayTag 分发 Ability press/release 的项目 ASC 扩展。
 
 - `Source/ShooterGame/Public/Character/PlayerCharacter.h`  
-  当前 Pawn、GAS Avatar、输入入口和表现组件聚合点。
+  当前 Pawn、GAS Avatar、输入入口和表现组件聚合点；实现 Combat / Equipment Owner 接口。
+
+- `Source/ShooterGame/Public/Interfaces/`  
+  组件和 Ability 访问 Owner 能力的边界，避免直接依赖具体玩家 Pawn 类型。
 
 - `Source/ShooterGame/Public/Components/ShooterInventoryComponent.h`  
   武器逻辑库存、槽位、弹药和稳定 ItemId。
@@ -106,6 +137,21 @@ Config/                UE project configuration
 
 - `Source/ShooterGame/Public/AbilitySystem/Abilities/GA_FireWeapon.h`  
   命中扫描与投射物武器的统一开火 Ability。
+
+- `Source/ShooterGame/Public/AbilitySystem/Abilities/GA_InteractWeapon.h`  
+  服务端权威拾取世界武器的交互 Ability。
+
+- `Source/ShooterGame/Public/AbilitySystem/Abilities/GA_DropWeapon.h`  
+  服务端权威丢弃当前武器的 Ability。
+
+- `Source/ShooterGame/Public/AbilitySystem/GameplayCues/`  
+  命中和开火表现的 GameplayCueNotify 实现。
+
+- `Source/ShooterGame/Public/Messages/ShooterGameplayMessageSubsystem.h`  
+  当前用于广播 `Message.Player.Death`，把死亡 Ability 和 GameMode 重生规则隔开。
+
+- `Source/ShooterGame/Public/GameMode/ShooterGameMode.h`  
+  订阅死亡消息并安排旧 Pawn 清理、PlayerState 状态重置和重生。
 
 - `Plugins/MultiplayerSession/Source/MultiplayerSession/Public/MultiplayerSessionsSubsystem.h`  
   Steam Session 创建、查找、加入和销毁入口。
@@ -118,7 +164,6 @@ Config/                UE project configuration
 
 - `Content/`
 - `assets/`
-- `docs/`
 - `Binaries/`
 - `Intermediate/`
 - `Saved/`
