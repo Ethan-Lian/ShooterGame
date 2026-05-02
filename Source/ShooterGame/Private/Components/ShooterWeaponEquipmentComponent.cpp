@@ -1,6 +1,7 @@
 #include "Components/ShooterWeaponEquipmentComponent.h"
 
 #include "AbilitySystemComponent.h"
+#include "AbilitySystem/ShooterAbilitySystemComponent.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
 #include "Character/PlayerCharacter.h"
 #include "Components/ShooterCombatComponent.h"
@@ -46,28 +47,12 @@ bool UShooterWeaponEquipmentComponent::StartPickupInput()
 		return false;
 	}
 
-	UShooterWeaponInteractionComponent* InteractionComponent = GetOwningWeaponInteractionComponent();
-	AShooterWeaponBase* TargetWeapon = InteractionComponent != nullptr
-		? InteractionComponent->GetCurrentTargetedPickupWeapon()
-		: nullptr;
-
-	if (TargetWeapon == nullptr)
+	UShooterAbilitySystemComponent* ShooterASC = GetOwningShooterAbilitySystemComponent();
+	if (ShooterASC != nullptr)
 	{
-		TargetWeapon = InteractionComponent != nullptr ? InteractionComponent->FindPickupWeaponFromView() : nullptr;
+		ShooterASC->AbilityInputTagPressed(TAG_Input_Interact);
 	}
 
-	if (TargetWeapon == nullptr)
-	{
-		return false;
-	}
-
-	AActor* OwnerActor = GetOwner();
-	if (OwnerActor != nullptr && OwnerActor->HasAuthority())
-	{
-		return TryPickupTargetWeapon(TargetWeapon);
-	}
-
-	ServerTryPickupTargetWeapon(TargetWeapon);
 	return true;
 }
 
@@ -83,13 +68,12 @@ bool UShooterWeaponEquipmentComponent::StartDropInput()
 		CombatComponent->StopFireInput();
 	}
 
-	AActor* OwnerActor = GetOwner();
-	if (OwnerActor != nullptr && OwnerActor->HasAuthority())
+	UShooterAbilitySystemComponent* ShooterASC = GetOwningShooterAbilitySystemComponent();
+	if (ShooterASC != nullptr)
 	{
-		return DropEquippedWeapon();
+		ShooterASC->AbilityInputTagPressed(TAG_Input_Drop);
 	}
 
-	ServerDropEquippedWeapon();
 	return true;
 }
 
@@ -271,6 +255,14 @@ bool UShooterWeaponEquipmentComponent::IsEquipmentInteractionBlocked() const
 	}
 
 	return false;
+}
+
+UShooterAbilitySystemComponent* UShooterWeaponEquipmentComponent::GetOwningShooterAbilitySystemComponent() const
+{
+	const APlayerCharacter* OwnerCharacter = GetOwningPlayerCharacter();
+	return OwnerCharacter != nullptr
+		? Cast<UShooterAbilitySystemComponent>(OwnerCharacter->GetAbilitySystemComponent())
+		: nullptr;
 }
 
 bool UShooterWeaponEquipmentComponent::TryPickupTargetWeapon(AShooterWeaponBase* TargetWeapon)
@@ -795,21 +787,6 @@ void UShooterWeaponEquipmentComponent::OnRep_EquippedWeapon(AShooterWeaponBase* 
 void UShooterWeaponEquipmentComponent::OnRep_EquippedItemId()
 {
 	RefreshEquippedWeaponInstance();
-}
-
-void UShooterWeaponEquipmentComponent::ServerTryPickupTargetWeapon_Implementation(AShooterWeaponBase* TargetWeapon)
-{
-	TryPickupTargetWeapon(TargetWeapon);
-}
-
-void UShooterWeaponEquipmentComponent::ServerDropEquippedWeapon_Implementation()
-{
-	if (IsEquipmentInteractionBlocked())
-	{
-		return;
-	}
-
-	DropEquippedWeapon();
 }
 
 void UShooterWeaponEquipmentComponent::ServerEquipInventorySlot_Implementation(int32 SlotIndex)

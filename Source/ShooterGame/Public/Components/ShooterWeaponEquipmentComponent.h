@@ -5,6 +5,7 @@
 
 class APlayerCharacter;
 class AShooterWeaponBase;
+class UShooterAbilitySystemComponent;
 class UShooterCombatComponent;
 class UShooterInventoryComponent;
 class UShooterWeaponInteractionComponent;
@@ -61,6 +62,12 @@ public:
 	// Rebuilds owner-side cached weapon state after replicated inventory changes arrive.
 	void HandleInventoryReplicated();
 
+	// Tries to add and equip the world weapon currently validated under the crosshair.
+	bool TryPickupTargetWeapon(AShooterWeaponBase* TargetWeapon);
+
+	// Drops the equipped weapon into the world on the authority path.
+	bool DropEquippedWeapon();
+
 private:
 	// Resolves the typed owning character helper.
 	APlayerCharacter* GetOwningPlayerCharacter() const;
@@ -77,14 +84,11 @@ private:
 	// Returns whether equipment interactions should currently be blocked.
 	bool IsEquipmentInteractionBlocked() const;
 
-	// Tries to add and equip the world weapon currently validated under the crosshair.
-	bool TryPickupTargetWeapon(AShooterWeaponBase* TargetWeapon);
+	// Resolves the owning ShooterASC for input-tag-driven ability dispatch.
+	UShooterAbilitySystemComponent* GetOwningShooterAbilitySystemComponent() const;
 
 	// Equips the logical inventory entry addressed by its stable item id.
 	bool EquipInventoryItemById(int32 ItemId, AShooterWeaponBase* ExistingPresentationActor = nullptr);
-
-	// Drops the equipped weapon into the world on the authority path.
-	bool DropEquippedWeapon();
 
 	// Spawns a fresh equipped presentation actor for the supplied logical inventory entry.
 	AShooterWeaponBase* SpawnEquippedWeaponActor(const FWeaponInventoryEntry& Entry);
@@ -129,14 +133,6 @@ private:
 	// Rebuilds the owner-side logical weapon view when the equipped item id changes.
 	UFUNCTION()
 	void OnRep_EquippedItemId();
-
-	// Sends the crosshair-targeted pickup request to the authority path.
-	UFUNCTION(Server, Reliable)
-	void ServerTryPickupTargetWeapon(AShooterWeaponBase* TargetWeapon);
-
-	// Sends the drop-weapon request to the authority path.
-	UFUNCTION(Server, Reliable)
-	void ServerDropEquippedWeapon();
 
 	// Sends the equip-slot request to the authority path.
 	UFUNCTION(Server, Reliable)

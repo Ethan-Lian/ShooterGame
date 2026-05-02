@@ -9,3 +9,8 @@ UE_DEFINE_GAMEPLAY_TAG(TAG_GameplayEvent_Death, "GameplayEvent.Death");
 UE_DEFINE_GAMEPLAY_TAG(TAG_GameplayCue_Damage_Hit, "GameplayCue.Damage.Hit");
 UE_DEFINE_GAMEPLAY_TAG(TAG_GameplayCue_Weapon_Fire, "GameplayCue.Weapon.Fire");
 UE_DEFINE_GAMEPLAY_TAG(TAG_Data_Damage, "Data.Damage");
+
+UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Fire, "Input.Fire");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Sprint, "Input.Sprint");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Interact, "Input.Interact");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Drop, "Input.Drop");

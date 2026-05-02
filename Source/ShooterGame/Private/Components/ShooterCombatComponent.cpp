@@ -1,6 +1,7 @@
 #include "Components/ShooterCombatComponent.h"
 
 #include "AbilitySystemComponent.h"
+#include "AbilitySystem/ShooterAbilitySystemComponent.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
 #include "Character/PlayerCharacter.h"
 #include "Components/ShooterWeaponEquipmentComponent.h"
@@ -159,28 +160,24 @@ UShooterWeaponInteractionComponent* UShooterCombatComponent::GetOwningWeaponInte
 
 void UShooterCombatComponent::HandleFireInputPressed()
 {
-	UAbilitySystemComponent* AbilitySystemComponent = GetOwningAbilitySystemComponent();
-	if (AbilitySystemComponent == nullptr || AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead))
+	UShooterAbilitySystemComponent* ShooterASC = Cast<UShooterAbilitySystemComponent>(GetOwningAbilitySystemComponent());
+	if (ShooterASC == nullptr || ShooterASC->HasMatchingGameplayTag(TAG_State_Dead))
 	{
 		return;
 	}
 
-	FGameplayTagContainer FireAbilityTags;
-	FireAbilityTags.AddTag(TAG_Ability_Weapon_Fire);
-	AbilitySystemComponent->TryActivateAbilitiesByTag(FireAbilityTags, true);
+	ShooterASC->AbilityInputTagPressed(TAG_Input_Fire);
 }
 
 void UShooterCombatComponent::HandleFireInputReleased()
 {
-	UAbilitySystemComponent* AbilitySystemComponent = GetOwningAbilitySystemComponent();
-	if (AbilitySystemComponent == nullptr)
+	UShooterAbilitySystemComponent* ShooterASC = Cast<UShooterAbilitySystemComponent>(GetOwningAbilitySystemComponent());
+	if (ShooterASC == nullptr)
 	{
 		return;
 	}
 
-	FGameplayTagContainer FireAbilityTags;
-	FireAbilityTags.AddTag(TAG_Ability_Weapon_Fire);
-	AbilitySystemComponent->CancelAbilities(&FireAbilityTags, nullptr, nullptr);
+	ShooterASC->AbilityInputTagReleased(TAG_Input_Fire);
 }
 
 void UShooterCombatComponent::SetAimInputPressed(bool bNewIsAiming)

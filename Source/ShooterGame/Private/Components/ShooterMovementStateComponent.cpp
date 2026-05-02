@@ -1,6 +1,7 @@
 #include "Components/ShooterMovementStateComponent.h"
 
 #include "AbilitySystem/Attributes/MovementAttributeSet.h"
+#include "AbilitySystem/ShooterAbilitySystemComponent.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
 #include "AbilitySystemComponent.h"
 #include "Character/PlayerCharacter.h"
@@ -160,26 +161,25 @@ bool UShooterMovementStateComponent::RefreshSprintAbilityState()
 
 bool UShooterMovementStateComponent::ActivateSprintAbility() const
 {
-	if (AbilitySystemComponent == nullptr)
+	UShooterAbilitySystemComponent* ShooterASC = Cast<UShooterAbilitySystemComponent>(AbilitySystemComponent.Get());
+	if (ShooterASC == nullptr)
 	{
 		return false;
 	}
 
-	FGameplayTagContainer SprintAbilityTags;
-	SprintAbilityTags.AddTag(TAG_Ability_Movement_Sprint);
-	return AbilitySystemComponent->TryActivateAbilitiesByTag(SprintAbilityTags, true);
+	ShooterASC->AbilityInputTagPressed(TAG_Input_Sprint);
+	return true;
 }
 
 bool UShooterMovementStateComponent::CancelSprintAbility() const
 {
-	if (AbilitySystemComponent == nullptr)
+	UShooterAbilitySystemComponent* ShooterASC = Cast<UShooterAbilitySystemComponent>(AbilitySystemComponent.Get());
+	if (ShooterASC == nullptr)
 	{
 		return false;
 	}
 
-	FGameplayTagContainer SprintAbilityTags;
-	SprintAbilityTags.AddTag(TAG_Ability_Movement_Sprint);
-	AbilitySystemComponent->CancelAbilities(&SprintAbilityTags, nullptr, nullptr);
+	ShooterASC->AbilityInputTagReleased(TAG_Input_Sprint);
 	return true;
 }
 

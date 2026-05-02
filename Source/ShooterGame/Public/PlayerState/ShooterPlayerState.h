@@ -4,7 +4,7 @@
 #include "GameFramework/PlayerState.h"
 #include "ShooterPlayerState.generated.h"
 
-class UAbilitySystemComponent;
+class UShooterAbilitySystemComponent;
 class UCombatAttributeSet;
 class UGameplayAbility;
 class UGameplayEffect;
@@ -54,6 +54,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shooter|Abilities")
 	TSubclassOf<UGameplayEffect> InitializeAttributesEffectClass;
 
+	// Lets Blueprint children override the interact ability triggered by Input.Interact.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shooter|Abilities")
+	TSubclassOf<UGameplayAbility> InteractWeaponAbilityClass;
+
+	// Lets Blueprint children override the drop ability triggered by Input.Drop.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shooter|Abilities")
+	TSubclassOf<UGameplayAbility> DropWeaponAbilityClass;
+
 private:
 	// Grants startup abilities once on the authority path.
 	void GrantStartupAbilitiesIfNeeded();
@@ -65,7 +73,7 @@ private:
 	void ApplyStartupAttributes();
 
 	UPROPERTY(VisibleAnywhere, Category = "Shooter|Abilities")
-	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
+	TObjectPtr<UShooterAbilitySystemComponent> AbilitySystemComponent;
 
 	UPROPERTY(VisibleAnywhere, Category = "Shooter|Abilities")
 	TObjectPtr<UCombatAttributeSet> CombatAttributeSet;

@@ -1,10 +1,12 @@
 #include "PlayerState/ShooterPlayerState.h"
 
-#include "AbilitySystemComponent.h"
+#include "AbilitySystem/ShooterAbilitySystemComponent.h"
 #include "Abilities/GameplayAbility.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
 #include "AbilitySystem/Abilities/GA_Death.h"
 #include "AbilitySystem/Abilities/GA_FireWeapon.h"
+#include "AbilitySystem/Abilities/GA_DropWeapon.h"
+#include "AbilitySystem/Abilities/GA_InteractWeapon.h"
 #include "AbilitySystem/Abilities/GA_Sprint.h"
 #include "AbilitySystem/Attributes/CombatAttributeSet.h"
 #include "AbilitySystem/Attributes/MovementAttributeSet.h"
@@ -17,7 +19,7 @@ AShooterPlayerState::AShooterPlayerState()
 	// PlayerState defaults to a low update rate, which makes replicated attributes feel delayed.
 	SetNetUpdateFrequency(100.f);
 
-	AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+	AbilitySystemComponent = CreateDefaultSubobject<UShooterAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AbilitySystemComponent->SetIsReplicated(true);
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 
@@ -28,6 +30,8 @@ AShooterPlayerState::AShooterPlayerState()
 	FireAbilityClass = UGA_FireWeapon::StaticClass();
 	DeathAbilityClass = UGA_Death::StaticClass();
 	SprintAbilityClass = UGA_Sprint::StaticClass();
+	InteractWeaponAbilityClass = UGA_InteractWeapon::StaticClass();
+	DropWeaponAbilityClass = UGA_DropWeapon::StaticClass();
 	InitializeAttributesEffectClass = UGE_InitializeAttributes::StaticClass();
 }
 
@@ -92,7 +96,9 @@ void AShooterPlayerState::GrantStartupAbilitiesIfNeeded()
 
 	if (FireAbilityClass != nullptr)
 	{
-		AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(FireAbilityClass, 1, INDEX_NONE, this));
+		FGameplayAbilitySpec FireAbilitySpec(FireAbilityClass, 1, INDEX_NONE, this);
+		FireAbilitySpec.GetDynamicSpecSourceTags().AddTag(TAG_Input_Fire);
+		AbilitySystemComponent->GiveAbility(FireAbilitySpec);
 	}
 
 	if (DeathAbilityClass != nullptr)
@@ -102,7 +108,23 @@ void AShooterPlayerState::GrantStartupAbilitiesIfNeeded()
 
 	if (SprintAbilityClass != nullptr)
 	{
-		AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(SprintAbilityClass, 1, INDEX_NONE, this));
+		FGameplayAbilitySpec SprintAbilitySpec(SprintAbilityClass, 1, INDEX_NONE, this);
+		SprintAbilitySpec.GetDynamicSpecSourceTags().AddTag(TAG_Input_Sprint);
+		AbilitySystemComponent->GiveAbility(SprintAbilitySpec);
+	}
+
+	if (InteractWeaponAbilityClass != nullptr)
+	{
+		FGameplayAbilitySpec InteractAbilitySpec(InteractWeaponAbilityClass, 3, INDEX_NONE, this);
+		InteractAbilitySpec.GetDynamicSpecSourceTags().AddTag(TAG_Input_Interact);
+		AbilitySystemComponent->GiveAbility(InteractAbilitySpec);
+	}
+
+	if (DropWeaponAbilityClass != nullptr)
+	{
+		FGameplayAbilitySpec DropAbilitySpec(DropWeaponAbilityClass, 4, INDEX_NONE, this);
+		DropAbilitySpec.GetDynamicSpecSourceTags().AddTag(TAG_Input_Drop);
+		AbilitySystemComponent->GiveAbility(DropAbilitySpec);
 	}
 
 	bStartupAbilitiesGranted = true;
