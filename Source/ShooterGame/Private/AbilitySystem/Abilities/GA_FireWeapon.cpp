@@ -1,5 +1,6 @@
 #include "AbilitySystem/Abilities/GA_FireWeapon.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
+#include "Abilities/Tasks/AbilityTask_WaitDelay.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "Components/ShooterWeaponEquipmentComponent.h"
@@ -13,7 +14,6 @@
 #include "ShooterGame.h"
 #include "Engine/World.h"
 #include "GameplayCueManager.h"
-#include "TimerManager.h"
 
 UGA_FireWeapon::UGA_FireWeapon()
 {
@@ -35,32 +35,20 @@ void UGA_FireWeapon::ActivateAbility(
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
 	APawn* ShooterPawn = Cast<APawn>(GetAvatarActorFromActorInfo());
-	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(ShooterPawn);
-	UShooterWeaponEquipmentComponent* EquipmentComponent = EquipmentOwner != nullptr
-		? EquipmentOwner->GetShooterWeaponEquipmentComponent()
-		: nullptr;
-	UShooterWeaponInstance* EquippedWeaponInstance = EquipmentComponent != nullptr
-		? EquipmentComponent->GetEquippedWeaponInstance()
-		: nullptr;
+	UShooterWeaponInstance* EquippedWeaponInstance = GetEquippedWeaponInstance();
 	if (ShooterPawn == nullptr || EquippedWeaponInstance == nullptr)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
-	FireSingleShot();
+	if (!FireSingleShot())
+	{
+		return;
+	}
 
 	const float FireInterval = FMath::Max(0.01f, EquippedWeaponInstance->GetFireConfig().FireInterval);
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().SetTimer(
-			RepeatingFireTimerHandle,
-			this,
-			&UGA_FireWeapon::HandleRepeatedFire,
-			FireInterval,
-			true,
-			FireInterval);
-	}
+	QueueNextShot(FireInterval);
 }
 
 void UGA_FireWeapon::EndAbility(
@@ -70,24 +58,44 @@ void UGA_FireWeapon::EndAbility(
 	bool bReplicateEndAbility,
 	bool bWasCancelled)
 {
-	if (UWorld* World = GetWorld())
+	if (FireDelayTask != nullptr)
 	{
-		World->GetTimerManager().ClearTimer(RepeatingFireTimerHandle);
+		FireDelayTask->EndTask();
+		FireDelayTask = nullptr;
 	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
-void UGA_FireWeapon::FireSingleShot()
+UShooterWeaponInstance* UGA_FireWeapon::GetEquippedWeaponInstance() const
 {
-	APawn* ShooterPawn = Cast<APawn>(GetAvatarActorFromActorInfo());
+	const APawn* ShooterPawn = Cast<APawn>(GetAvatarActorFromActorInfo());
 	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(ShooterPawn);
-	UShooterWeaponEquipmentComponent* EquipmentComponent = EquipmentOwner != nullptr
+	const UShooterWeaponEquipmentComponent* EquipmentComponent = EquipmentOwner != nullptr
 		? EquipmentOwner->GetShooterWeaponEquipmentComponent()
 		: nullptr;
-	UShooterWeaponInstance* EquippedWeaponInstance = EquipmentComponent != nullptr
-		? EquipmentComponent->GetEquippedWeaponInstance()
-		: nullptr;
+	return EquipmentComponent != nullptr ? EquipmentComponent->GetEquippedWeaponInstance() : nullptr;
+}
+
+bool UGA_FireWeapon::CommitFireShot()
+{
+	CostGameplayEffectClass = FireCostGameplayEffectClass;
+	CooldownGameplayEffectClass = FireCooldownGameplayEffectClass;
+
+	FGameplayTagContainer FailureTags;
+	if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, &FailureTags))
+	{
+		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+		return false;
+	}
+
+	return true;
+}
+
+bool UGA_FireWeapon::FireSingleShot()
+{
+	APawn* ShooterPawn = Cast<APawn>(GetAvatarActorFromActorInfo());
+	UShooterWeaponInstance* EquippedWeaponInstance = GetEquippedWeaponInstance();
 	AShooterWeaponBase* EquippedWeaponActor = EquippedWeaponInstance != nullptr
 		? EquippedWeaponInstance->GetEquippedWeaponActor()
 		: nullptr;
@@ -98,7 +106,7 @@ void UGA_FireWeapon::FireSingleShot()
 		|| SourceAbilitySystem == nullptr)
 	{
 		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
-		return;
+		return false;
 	}
 
 	const FWeaponFireConfig& FireConfig = EquippedWeaponInstance->GetFireConfig();
@@ -107,7 +115,12 @@ void UGA_FireWeapon::FireSingleShot()
 	{
 		UE_LOG(LogShooterGame, Warning, TEXT("%s cannot fire because its weapon config is incomplete."), *ShooterPawn->GetName());
 		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
-		return;
+		return false;
+	}
+
+	if (!CommitFireShot())
+	{
+		return false;
 	}
 
 	const FTransform MuzzleTransform = EquippedWeaponInstance->GetMuzzleTransform();
@@ -115,10 +128,30 @@ void UGA_FireWeapon::FireSingleShot()
 	if (FireConfig.FireMode == EWeaponFireMode::Projectile)
 	{
 		FireProjectileShot(ShooterPawn, EquippedWeaponActor, SourceAbilitySystem, FireConfig, MuzzleTransform);
-		return;
+		return true;
 	}
 
 	FireHitscanShot(ShooterPawn, EquippedWeaponActor, SourceAbilitySystem, FireConfig, MuzzleTransform);
+	return true;
+}
+
+void UGA_FireWeapon::QueueNextShot(float FireInterval)
+{
+	if (FireDelayTask != nullptr)
+	{
+		FireDelayTask->EndTask();
+		FireDelayTask = nullptr;
+	}
+
+	FireDelayTask = UAbilityTask_WaitDelay::WaitDelay(this, FMath::Max(0.01f, FireInterval));
+	if (FireDelayTask == nullptr)
+	{
+		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+		return;
+	}
+
+	FireDelayTask->OnFinish.AddDynamic(this, &UGA_FireWeapon::HandleRepeatedFire);
+	FireDelayTask->ReadyForActivation();
 }
 
 bool UGA_FireWeapon::ResolveAimPoint(
@@ -310,5 +343,14 @@ void UGA_FireWeapon::ExecuteFireCue(
 
 void UGA_FireWeapon::HandleRepeatedFire()
 {
-	FireSingleShot();
+	FireDelayTask = nullptr;
+
+	UShooterWeaponInstance* EquippedWeaponInstance = GetEquippedWeaponInstance();
+	if (EquippedWeaponInstance == nullptr || !FireSingleShot())
+	{
+		return;
+	}
+
+	const float FireInterval = FMath::Max(0.01f, EquippedWeaponInstance->GetFireConfig().FireInterval);
+	QueueNextShot(FireInterval);
 }

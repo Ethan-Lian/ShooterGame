@@ -5,7 +5,9 @@
 
 class APawn;
 class AShooterWeaponBase;
+class UAbilityTask_WaitDelay;
 class UAbilitySystemComponent;
+class UGameplayEffect;
 class UShooterWeaponInstance;
 struct FWeaponFireConfig;
 
@@ -33,8 +35,17 @@ public:
 		bool bWasCancelled) override;
 
 private:
+	// Resolves the currently equipped logical weapon for the avatar.
+	UShooterWeaponInstance* GetEquippedWeaponInstance() const;
+
+	// Commits optional fire cost/cooldown before one shot leaves the weapon.
+	bool CommitFireShot();
+
 	// Validates the avatar/weapon chain and fires once using the configured weapon mode.
-	void FireSingleShot();
+	bool FireSingleShot();
+
+	// Starts the next delay task for automatic fire.
+	void QueueNextShot(float FireInterval);
 
 	// Resolves the center-screen aim point from the player's authoritative view.
 	bool ResolveAimPoint(
@@ -68,7 +79,17 @@ private:
 		const FVector& ShotDirection) const;
 
 	// Continues automatic fire using the current weapon config.
+	UFUNCTION()
 	void HandleRepeatedFire();
 
-	FTimerHandle RepeatingFireTimerHandle;
+	// Optional cost GE consumed once for every shot.
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Cost")
+	TSubclassOf<UGameplayEffect> FireCostGameplayEffectClass;
+
+	// Optional cooldown GE applied once for every shot.
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Cooldown")
+	TSubclassOf<UGameplayEffect> FireCooldownGameplayEffectClass;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAbilityTask_WaitDelay> FireDelayTask;
 };
