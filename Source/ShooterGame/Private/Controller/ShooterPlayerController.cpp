@@ -19,9 +19,16 @@
 #include "Interfaces/ShooterCombatInterface.h"
 #include "Interfaces/ShooterEquipmentInterface.h"
 #include "ShooterGame.h"
+#include "UObject/ConstructorHelpers.h"
 
 AShooterPlayerController::AShooterPlayerController()
 {
+	static ConstructorHelpers::FObjectFinder<UShooterInputConfig> DefaultInputConfig(
+		TEXT("/Game/ShooterGameContent/DataConfig/DA_ShooterInputConfig.DA_ShooterInputConfig"));
+	if (DefaultInputConfig.Succeeded())
+	{
+		InputConfig = DefaultInputConfig.Object;
+	}
 }
 
 void AShooterPlayerController::BeginPlay()
