@@ -5,20 +5,11 @@
 
 class ACharacter;
 class AShooterWeaponEquipmentActor;
-class AShooterWeaponPickupActor;
-class UShooterAbilitySystemComponent;
 class UShooterCombatComponent;
 class UShooterInventoryComponent;
-class UShooterWeaponInteractionComponent;
 class UShooterWeaponInstance;
 class UWeaponDataAsset;
 struct FWeaponInventoryEntry;
-
-enum class EShooterWeaponDropMode : uint8
-{
-	ManualThrow,
-	DeathInPlace
-};
 
 UCLASS(ClassGroup = (ShooterGame), Blueprintable, BlueprintType, meta = (BlueprintSpawnableComponent))
 class SHOOTERGAME_API UShooterWeaponEquipmentComponent : public UActorComponent
@@ -43,21 +34,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Shooter|Combat")
 	int32 GetEquippedItemId() const { return EquippedItemId; }
 
-	// Legacy pickup entry point; disabled for fixed-weapon gameplay.
-	bool StartPickupInput();
-
-	// Legacy drop entry point; disabled for fixed-weapon gameplay.
-	bool StartDropInput();
-
-	// Legacy slot selection entry point; disabled for fixed-weapon gameplay.
-	bool EquipInventorySlot(int32 SlotIndex);
-
-	// Legacy slot cycling entry point; disabled for fixed-weapon gameplay.
-	bool EquipNextInventorySlot();
-
-	// Legacy slot cycling entry point; disabled for fixed-weapon gameplay.
-	bool EquipPreviousInventorySlot();
-
 	// Destroys the equipped weapon and removes its inventory entry without dropping it.
 	bool HandleOwnerDeath();
 
@@ -69,12 +45,6 @@ public:
 
 	// Clears Pawn-scoped presentation and transient instance state without changing PlayerState inventory.
 	void UninitializeForPawn();
-
-	// Legacy ability entry point; disabled for fixed-weapon gameplay.
-	bool TryPickupTargetWeapon(AShooterWeaponPickupActor* TargetWeapon);
-
-	// Legacy ability entry point; disabled for fixed-weapon gameplay.
-	bool DropEquippedWeapon();
 
 private:
 	// The single Hitscan weapon granted when a live Pawn becomes ready.
@@ -90,32 +60,14 @@ private:
 	// Resolves the PlayerState-owned inventory component that owns logical weapons.
 	UShooterInventoryComponent* GetOwningInventoryComponent() const;
 
-	// Resolves the interaction component that owns pickup targeting and view traces.
-	UShooterWeaponInteractionComponent* GetOwningWeaponInteractionComponent() const;
-
 	// Returns whether equipment interactions should currently be blocked.
 	bool IsEquipmentInteractionBlocked() const;
 
-	// Resolves the owning ShooterASC for input-tag-driven ability dispatch.
-	UShooterAbilitySystemComponent* GetOwningShooterAbilitySystemComponent() const;
-
 	// Equips the logical inventory entry addressed by its stable item id.
-	bool EquipInventoryItemById(int32 ItemId, AShooterWeaponPickupActor* ExistingPickupActor = nullptr);
+	bool EquipInventoryItemById(int32 ItemId);
 
 	// Spawns a fresh equipped presentation actor for the supplied logical inventory entry.
 	AShooterWeaponEquipmentActor* SpawnEquippedWeaponActor(const FWeaponInventoryEntry& Entry);
-
-	// Spawns a fresh world pickup actor from the supplied logical inventory entry.
-	bool SpawnWorldPickupFromEntry(const FWeaponInventoryEntry& Entry, const FTransform& DropTransform, EShooterWeaponDropMode DropMode);
-
-	// Projects a server-authored drop transform onto walkable world geometry.
-	FTransform ResolveGroundedDropTransform(const FTransform& DropTransform) const;
-
-	// Predicts the server-authoritative landing transform by sweeping a ballistic arc.
-	FTransform ResolveBallisticDropTransform(const FTransform& StartTransform) const;
-
-	// Clamps the requested drop point in front of blocking world geometry.
-	FTransform ResolveReachableDropTransform(const FTransform& DropTransform) const;
 
 	// Destroys the current equipped presentation actor when it is no longer needed.
 	void DestroyEquippedWeaponActor();
@@ -129,15 +81,6 @@ private:
 	// Clears the logical weapon instance when nothing is equipped.
 	void ClearEquippedWeaponInstance();
 
-	// Builds the server-authoritative drop transform for world weapon placement.
-	FTransform GetWeaponDropTransform() const;
-
-	// Builds the server-authoritative in-place drop transform used during death.
-	FTransform GetWeaponDeathDropTransform() const;
-
-	// Validates that a weapon is still a legitimate world pickup within interaction range.
-	bool IsValidWorldPickupForPickup(const AShooterWeaponPickupActor* Weapon) const;
-
 	// Reattaches the replicated weapon pointer on remote clients.
 	UFUNCTION()
 	void OnRep_EquippedWeapon(AShooterWeaponEquipmentActor* OldEquippedWeapon);
@@ -145,10 +88,6 @@ private:
 	// Rebuilds the owner-side logical weapon view when the equipped item id changes.
 	UFUNCTION()
 	void OnRep_EquippedItemId();
-
-	// Sends the equip-slot request to the authority path.
-	UFUNCTION(Server, Reliable)
-	void ServerEquipInventorySlot(int32 SlotIndex);
 
 	// Replicated weapon pointer used by remote attachment logic and weapon presentation.
 	UPROPERTY(ReplicatedUsing = OnRep_EquippedWeapon, VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
@@ -162,27 +101,4 @@ private:
 	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UShooterWeaponInstance> EquippedWeaponInstance;
 
-	// Moves dropped weapons forward so they clear the character capsule.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
-	float WeaponDropForwardOffset = 80.f;
-
-	// Raises the requested drop point before it is projected down to the floor.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
-	float WeaponDropUpOffset = 30.f;
-
-	// Initial forward speed used by the server-side ballistic drop prediction.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true", ClampMin = "0.0"))
-	float WeaponDropForwardSpeed = 260.f;
-
-	// Initial upward speed used by the server-side ballistic drop prediction.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true", ClampMin = "0.0"))
-	float WeaponDropUpSpeed = 340.f;
-
-	// Duration of the visual-only throw arc played by the dropped weapon mesh.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true", ClampMin = "0.0"))
-	float WeaponDropPresentationDuration = 0.45f;
-
-	// Extra height added to the visual-only throw arc.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true", ClampMin = "0.0"))
-	float WeaponDropPresentationArcHeight = 80.f;
 };

@@ -12,7 +12,6 @@ class UShooterAbilitySystemComponent;
 class UShooterInputConfig;
 class UShooterCombatComponent;
 class UShooterMovementStateComponent;
-class UShooterWeaponEquipmentComponent;
 struct FInputActionValue;
 
 UCLASS()
@@ -58,9 +57,6 @@ private:
 
 	// Resolves the controlled pawn's movement-state component through the combat interface.
 	UShooterMovementStateComponent* GetControlledMovementStateComponent() const;
-
-	// Resolves the controlled pawn's equipment component through the equipment interface.
-	UShooterWeaponEquipmentComponent* GetControlledWeaponEquipmentComponent() const;
 
 	// Returns whether input should be blocked because the pawn is already dead.
 	bool IsControlledPawnDead() const;

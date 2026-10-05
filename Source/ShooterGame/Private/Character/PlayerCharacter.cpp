@@ -9,7 +9,6 @@
 #include "Components/ShooterHealthComponent.h"
 #include "Components/ShooterInventoryComponent.h"
 #include "Components/ShooterMovementStateComponent.h"
-#include "Components/ShooterWeaponInteractionComponent.h"
 #include "Components/ShooterPawnExtensionComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -48,7 +47,6 @@ APlayerCharacter::APlayerCharacter()
 	CombatComponent = CreateDefaultSubobject<UShooterCombatComponent>(TEXT("CombatComponent"));
 	MovementStateComponent = CreateDefaultSubobject<UShooterMovementStateComponent>(TEXT("MovementStateComponent"));
 	WeaponEquipmentComponent = CreateDefaultSubobject<UShooterWeaponEquipmentComponent>(TEXT("WeaponEquipmentComponent"));
-	WeaponInteractionComponent = CreateDefaultSubobject<UShooterWeaponInteractionComponent>(TEXT("WeaponInteractionComponent"));
 	PawnExtensionComponent = CreateDefaultSubobject<UShooterPawnExtensionComponent>(TEXT("PawnExtensionComponent"));
 	
 	OverheadWidget = CreateDefaultSubobject<UWidgetComponent>(FName("OverheadWidget"));

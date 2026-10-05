@@ -4,8 +4,6 @@
 #include "Weapon/WeaponDataAsset.h"
 #include "ShooterWeaponBase.generated.h"
 
-class AShooterWeaponEquipmentActor;
-class AShooterWeaponPickupActor;
 class USceneComponent;
 class UStaticMeshComponent;
 
@@ -17,7 +15,7 @@ class SHOOTERGAME_API AShooterWeaponBase : public AActor
 public:
 	AShooterWeaponBase();
 
-	// Replicates the logical weapon snapshot consumed by pickup and equipment actors.
+	// Replicates the logical weapon snapshot consumed by the equipped presentation actor.
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	// Returns the resolved data-asset definition currently mirrored by this presentation actor.
@@ -29,19 +27,13 @@ public:
 	// Mirrors a logical weapon snapshot onto this presentation actor.
 	void SetPickupData(const FWeaponPickupData& NewPickupData);
 
-	// Returns the pickup actor class to spawn when this weapon becomes a world item.
-	TSubclassOf<AShooterWeaponPickupActor> GetPickupActorClass() const;
-
-	// Returns the equipment actor class to spawn when this weapon is equipped.
-	TSubclassOf<AShooterWeaponEquipmentActor> GetEquipmentActorClass() const;
-
 	// Returns the resolved fire config, preferring data assets over native fallback values.
 	const FWeaponFireConfig& GetFireConfig() const;
 
 	// Returns the resolved ammo config, preferring data assets over native fallback values.
 	const FWeaponAmmoConfig& GetAmmoConfig() const;
 
-	// Returns the muzzle transform used for projectile spawn.
+	// Returns the muzzle transform used for Hitscan traces and fire feedback.
 	FTransform GetMuzzleTransform() const;
 
 	// Returns the socket or bone name used for character attachment.
@@ -49,9 +41,6 @@ public:
 
 	// Returns the runtime transform used when the weapon is attached to a character.
 	FTransform GetEquippedRelativeTransform() const;
-
-	// Returns the mesh transform used while the weapon rests as a world pickup.
-	FTransform GetDroppedMeshRelativeTransform() const;
 
 	// Returns the visible weapon mesh component.
 	UStaticMeshComponent* GetWeaponMesh() const;
@@ -76,19 +65,10 @@ protected:
 	TObjectPtr<UWeaponDataAsset> WeaponDataAsset;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
-	TSubclassOf<AShooterWeaponPickupActor> PickupActorClass;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
-	TSubclassOf<AShooterWeaponEquipmentActor> EquipmentActorClass;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	FName CharacterAttachSocketName = TEXT("hand_r");
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	FTransform WeaponMeshRelativeTransform = FTransform::Identity;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
-	FTransform DroppedMeshRelativeTransform = FTransform::Identity;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	FWeaponFireConfig FallbackFireConfig;

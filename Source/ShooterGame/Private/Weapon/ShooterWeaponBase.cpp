@@ -4,7 +4,6 @@
 #include "Components/StaticMeshComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Weapon/ShooterWeaponEquipmentActor.h"
-#include "Weapon/ShooterWeaponPickupActor.h"
 
 AShooterWeaponBase::AShooterWeaponBase()
 {
@@ -49,52 +48,6 @@ void AShooterWeaponBase::SetPickupData(const FWeaponPickupData& NewPickupData)
 	ApplyDataAssetPresentation();
 }
 
-TSubclassOf<AShooterWeaponPickupActor> AShooterWeaponBase::GetPickupActorClass() const
-{
-	if (const UWeaponDataAsset* WeaponDefinition = GetPickupData().WeaponDefinition)
-	{
-		if (WeaponDefinition->PickupActorClass != nullptr)
-		{
-			return WeaponDefinition->PickupActorClass;
-		}
-	}
-
-	if (PickupActorClass != nullptr)
-	{
-		return PickupActorClass;
-	}
-
-	if (GetClass()->IsChildOf(AShooterWeaponPickupActor::StaticClass()))
-	{
-		return TSubclassOf<AShooterWeaponPickupActor>(GetClass());
-	}
-
-	return AShooterWeaponPickupActor::StaticClass();
-}
-
-TSubclassOf<AShooterWeaponEquipmentActor> AShooterWeaponBase::GetEquipmentActorClass() const
-{
-	if (const UWeaponDataAsset* WeaponDefinition = GetPickupData().WeaponDefinition)
-	{
-		if (WeaponDefinition->EquipmentActorClass != nullptr)
-		{
-			return WeaponDefinition->EquipmentActorClass;
-		}
-	}
-
-	if (EquipmentActorClass != nullptr)
-	{
-		return EquipmentActorClass;
-	}
-
-	if (GetClass()->IsChildOf(AShooterWeaponEquipmentActor::StaticClass()))
-	{
-		return TSubclassOf<AShooterWeaponEquipmentActor>(GetClass());
-	}
-
-	return AShooterWeaponEquipmentActor::StaticClass();
-}
-
 const FWeaponFireConfig& AShooterWeaponBase::GetFireConfig() const
 {
 	const UWeaponDataAsset* WeaponDefinition = GetPickupData().WeaponDefinition;
@@ -133,12 +86,6 @@ FTransform AShooterWeaponBase::GetEquippedRelativeTransform() const
 {
 	const UWeaponDataAsset* WeaponDefinition = GetPickupData().WeaponDefinition;
 	return WeaponDefinition != nullptr ? WeaponDefinition->WeaponMeshRelativeTransform : WeaponMeshRelativeTransform;
-}
-
-FTransform AShooterWeaponBase::GetDroppedMeshRelativeTransform() const
-{
-	const UWeaponDataAsset* WeaponDefinition = GetPickupData().WeaponDefinition;
-	return WeaponDefinition != nullptr ? WeaponDefinition->DroppedMeshRelativeTransform : DroppedMeshRelativeTransform;
 }
 
 UStaticMeshComponent* AShooterWeaponBase::GetWeaponMesh() const

@@ -28,19 +28,13 @@ public:
 	// Returns the stable logical inventory id that owns this runtime instance.
 	int32 GetItemId() const { return ItemId; }
 
-	// Returns the logical slot index that currently owns this runtime instance.
-	int32 GetSlotIndex() const { return SlotIndex; }
-
 	// Returns the currently equipped presentation actor backing this instance.
 	AShooterWeaponEquipmentActor* GetEquippedWeaponActor() const { return EquippedWeaponActor.Get(); }
-
-	// Updates which world/equipped actor currently presents this logical weapon instance.
-	void SetEquippedWeaponActor(AShooterWeaponEquipmentActor* NewEquippedWeaponActor);
 
 	// Clears the current equipped actor reference when the weapon leaves the avatar.
 	void ClearEquippedWeaponActor();
 
-	// Returns the best-known muzzle transform for spawning projectiles.
+	// Returns the best-known muzzle transform for Hitscan traces and fire feedback.
 	FTransform GetMuzzleTransform() const;
 
 	// Returns the copied attachment socket name used by equipped presentation.
@@ -59,10 +53,6 @@ private:
 	// Stable logical inventory id copied from the owning inventory entry.
 	UPROPERTY(Transient)
 	int32 ItemId = INDEX_NONE;
-
-	// Logical slot index copied from the owning inventory entry.
-	UPROPERTY(Transient)
-	int32 SlotIndex = INDEX_NONE;
 
 	// Optional source definition asset when the weapon came from a data asset.
 	UPROPERTY(Transient)

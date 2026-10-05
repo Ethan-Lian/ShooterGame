@@ -9,7 +9,6 @@
 #include "EnhancedInputSubsystems.h"
 #include "Components/ShooterCombatComponent.h"
 #include "Components/ShooterMovementStateComponent.h"
-#include "Components/ShooterWeaponEquipmentComponent.h"
 #include "GameFramework/Character.h"
 #include "HUD/ShooterHUD.h"
 #include "Input/ShooterInputConfig.h"
@@ -17,7 +16,6 @@
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
 #include "Interfaces/ShooterCombatInterface.h"
-#include "Interfaces/ShooterEquipmentInterface.h"
 #include "ShooterGame.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -163,12 +161,6 @@ UShooterMovementStateComponent* AShooterPlayerController::GetControlledMovementS
 	return CombatOwner != nullptr ? CombatOwner->GetShooterMovementStateComponent() : nullptr;
 }
 
-UShooterWeaponEquipmentComponent* AShooterPlayerController::GetControlledWeaponEquipmentComponent() const
-{
-	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(GetPawn());
-	return EquipmentOwner != nullptr ? EquipmentOwner->GetShooterWeaponEquipmentComponent() : nullptr;
-}
-
 bool AShooterPlayerController::IsControlledPawnDead() const
 {
 	const UAbilitySystemComponent* AbilitySystemComponent = GetControlledAbilitySystemComponent();
@@ -219,24 +211,6 @@ void AShooterPlayerController::HandleAbilityInputPressed(FGameplayTag InputTag)
 		return;
 	}
 
-	if (InputTag == TAG_Input_Interact)
-	{
-		if (UShooterWeaponEquipmentComponent* EquipmentComponent = GetControlledWeaponEquipmentComponent())
-		{
-			EquipmentComponent->StartPickupInput();
-		}
-		return;
-	}
-
-	if (InputTag == TAG_Input_Drop)
-	{
-		if (UShooterWeaponEquipmentComponent* EquipmentComponent = GetControlledWeaponEquipmentComponent())
-		{
-			EquipmentComponent->StartDropInput();
-		}
-		return;
-	}
-
 	if (UShooterAbilitySystemComponent* ShooterASC = GetControlledShooterAbilitySystemComponent())
 	{
 		ShooterASC->AbilityInputTagPressed(InputTag);
@@ -260,11 +234,6 @@ void AShooterPlayerController::HandleAbilityInputReleased(FGameplayTag InputTag)
 		{
 			MovementStateComponent->StopSprintInput();
 		}
-		return;
-	}
-
-	if (InputTag == TAG_Input_Interact || InputTag == TAG_Input_Drop)
-	{
 		return;
 	}
 

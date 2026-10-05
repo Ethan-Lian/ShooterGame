@@ -4,7 +4,6 @@
 #include "AbilitySystem/ShooterAbilitySystemComponent.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
 #include "Components/ShooterWeaponEquipmentComponent.h"
-#include "Components/ShooterWeaponInteractionComponent.h"
 #include "Interfaces/ShooterCombatInterface.h"
 #include "Interfaces/ShooterEquipmentInterface.h"
 #include "Net/UnrealNetwork.h"
@@ -128,11 +127,6 @@ bool UShooterCombatComponent::HandleOwnerDeath()
 		EquipmentComponent->HandleOwnerDeath();
 	}
 
-	if (UShooterWeaponInteractionComponent* InteractionComponent = GetOwningWeaponInteractionComponent())
-	{
-		InteractionComponent->ClearTargetedPickupWeapon();
-	}
-
 	return bFireInputStopped;
 }
 
@@ -148,11 +142,6 @@ void UShooterCombatComponent::UninitializeForPawn()
 	bOwnerDeathHandled = false;
 	bIsFireInputPressed = false;
 	SetAimInputPressed(false);
-
-	if (UShooterWeaponInteractionComponent* InteractionComponent = GetOwningWeaponInteractionComponent())
-	{
-		InteractionComponent->ClearTargetedPickupWeapon();
-	}
 }
 
 UAbilitySystemComponent* UShooterCombatComponent::GetOwningAbilitySystemComponent() const
@@ -165,12 +154,6 @@ UShooterWeaponEquipmentComponent* UShooterCombatComponent::GetOwningWeaponEquipm
 {
 	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(GetOwner());
 	return EquipmentOwner != nullptr ? EquipmentOwner->GetShooterWeaponEquipmentComponent() : nullptr;
-}
-
-UShooterWeaponInteractionComponent* UShooterCombatComponent::GetOwningWeaponInteractionComponent() const
-{
-	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(GetOwner());
-	return EquipmentOwner != nullptr ? EquipmentOwner->GetShooterWeaponInteractionComponent() : nullptr;
 }
 
 void UShooterCombatComponent::HandleFireInputPressed()

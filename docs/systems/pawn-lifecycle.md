@@ -14,8 +14,7 @@ AShooterPlayerState                         current APlayerCharacter
   ├── UCombatAttributeSet                     ├── UShooterHealthComponent
   ├── UMovementAttributeSet                   ├── UShooterCombatComponent
   └── UShooterInventoryComponent              ├── UShooterMovementStateComponent
-                                               ├── UShooterWeaponEquipmentComponent
-                                               └── UShooterWeaponInteractionComponent
+                                               └── UShooterWeaponEquipmentComponent
 ```
 
 - ASC Owner：`AShooterPlayerState`
@@ -147,15 +146,19 @@ GameMode 决定重生时机；PawnExtension 只保证旧 Pawn 清理和新 Pawn 
 |---|---|---|
 | 2026-10-04，UE 5.7.4 Editor/Game Development 构建 | PASS | 固定武器最终版本构建成功；`Saved/Validation/20261004-fixed-weapon/Build-Editor-final.log` 与 `Build-Game-final.log` |
 | 2026-10-05，开发者游戏内手动验证 | 开发者确认无异常 | 当前固定武器出生/重生阶段；未提供具体拓扑、人数、重生次数和证据文件，不据此声明 Steam、弱网或完整 Seamless Travel 已通过 |
+| 2026-10-05，阶段 3，UE 5.7.4 Editor/Game Development 构建 | PASS | 旧玩法删除后的构建；`Saved/Stage3/Build-Editor-final.log`、`Saved/Stage3/Build-Game-final.log` |
+| 2026-10-05，阶段 3，资源迁移与全新进程加载 | PASS | 17 个相关 Blueprint 重新编译并保存，5 张项目地图加载；清除废弃资源依赖。最终全新进程检查为 0 errors / 0 warnings；`Saved/Stage3/Assets-finalize-final.log`、`Saved/Stage3/Assets-fresh-load.log` 与 `assets-fresh-load.json`。这些检查不代表 Gameplay 运行通过 |
+| 2026-10-05，阶段 3，开发者游戏内复测反馈 | 开发者确认无异常 | 开发者反馈“没问题”；未提供具体拓扑、人数、重生次数或证据文件，不据此声明 Steam、弱网或完整 Seamless Travel 已通过 |
 | Steam 好友跨设备、弱网、Dedicated Server、完整 Seamless Travel | 待分别验证 | 当前阶段反馈没有单独覆盖说明 |
 
 ### 固定武器契约
 
 - Equipment 在存活 Pawn 的 ASC/组件绑定完成、Combat 死亡阻塞解除后，服务器从 `DefaultWeaponDefinition` 授予并装备一把 Hitscan 武器；原生默认值为现有 `DA_Weapon_AK47`。
-- 重复初始化沿用当前装备 Actor，不重复添加库存。Inventory 和 Equipment 的必要依赖仍保留。
+- 重复初始化沿用当前装备 Actor，不重复添加库存。Inventory 仅允许一个默认武器条目，仍保留 ItemId 与 OwnerOnly 复制；不再有槽位、拾取转移或循环切换。
 - 死亡销毁权威武器、移除对应库存项并清理 transient WeaponInstance，不生成掉落；重生重新初始化默认弹药数据，扣弹与预测尚未实现。
 - 客户端解绑或死亡只隐藏/解绑表现与清理缓存，不主动清空服务器复制的 `EquippedWeapon`、`EquippedItemId`；恢复存活状态后刷新表现。
-- 拾取、切槽位和丢弃入口停用，旧交互类型与资源留待下一阶段解除引用后删除。
+- 拾取、切槽位、丢弃、掉落表现与 Projectile 的代码、对应 Blueprint 和废弃输入已移除。Lobby 与 GameLevel1 中的旧拾取武器已清除，Steam Session/邀请/加入与必要 Travel 保留。
+- 删除前的代码、配置、文档与 ShooterGameContent 资源基线保存在本地 `Saved/CodeBaselines/stage3-20261005-102823/`；资源和维护记录仍按仓库规则保留在 Git 跟踪之外。
 
 ### 后续验证方式
 

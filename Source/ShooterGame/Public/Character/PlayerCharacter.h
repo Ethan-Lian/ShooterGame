@@ -19,7 +19,6 @@ class UShooterHealthComponent;
 class UShooterInventoryComponent;
 class UShooterMovementStateComponent;
 class UShooterWeaponEquipmentComponent;
-class UShooterWeaponInteractionComponent;
 class UShooterWeaponInstance;
 class UShooterPawnExtensionComponent;
 class USpringArmComponent;
@@ -115,13 +114,6 @@ public:
 	// Returns the equipment component through the equipment interface.
 	virtual UShooterWeaponEquipmentComponent* GetShooterWeaponEquipmentComponent() const override { return WeaponEquipmentComponent; }
 
-	// Returns the component that owns local pickup targeting and pickup prompt state.
-	UFUNCTION(BlueprintPure, Category = "Player|Combat")
-	UShooterWeaponInteractionComponent* GetWeaponInteractionComponent() const { return WeaponInteractionComponent; }
-
-	// Returns the interaction component through the equipment interface.
-	virtual UShooterWeaponInteractionComponent* GetShooterWeaponInteractionComponent() const override { return WeaponInteractionComponent; }
-
 	// Returns whether combat currently treats this character as aiming.
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
 	bool IsAiming() const;
@@ -177,10 +169,6 @@ private:
 	// Owns the replicated equipped weapon pointer plus equip/drop behavior.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UShooterWeaponEquipmentComponent> WeaponEquipmentComponent;
-
-	// Owns local pickup traces and the currently highlighted world weapon.
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UShooterWeaponInteractionComponent> WeaponInteractionComponent;
 
 	// Coordinates lifecycle initialization and cleanup for the current Pawn.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player|Lifecycle", meta = (AllowPrivateAccess = "true"))

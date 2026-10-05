@@ -7,8 +7,8 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
 #include "Interfaces/ShooterEquipmentInterface.h"
-#include "Projectile/ShooterProjectileBase.h"
 #include "Weapon/ShooterWeaponBase.h"
+#include "Weapon/ShooterWeaponEquipmentActor.h"
 #include "Weapon/WeaponDataAsset.h"
 #include "Weapon/ShooterWeaponInstance.h"
 #include "ShooterGame.h"
@@ -110,8 +110,7 @@ bool UGA_FireWeapon::FireSingleShot()
 	}
 
 	const FWeaponFireConfig& FireConfig = EquippedWeaponInstance->GetFireConfig();
-	if (FireConfig.DamageEffectClass == nullptr
-		|| (FireConfig.FireMode == EWeaponFireMode::Projectile && FireConfig.ProjectileClass == nullptr))
+	if (FireConfig.DamageEffectClass == nullptr)
 	{
 		UE_LOG(LogShooterGame, Warning, TEXT("%s cannot fire because its weapon config is incomplete."), *ShooterPawn->GetName());
 		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
@@ -124,12 +123,6 @@ bool UGA_FireWeapon::FireSingleShot()
 	}
 
 	const FTransform MuzzleTransform = EquippedWeaponInstance->GetMuzzleTransform();
-
-	if (FireConfig.FireMode == EWeaponFireMode::Projectile)
-	{
-		FireProjectileShot(ShooterPawn, EquippedWeaponActor, SourceAbilitySystem, FireConfig, MuzzleTransform);
-		return true;
-	}
 
 	FireHitscanShot(ShooterPawn, EquippedWeaponActor, SourceAbilitySystem, FireConfig, MuzzleTransform);
 	return true;
@@ -282,42 +275,6 @@ void UGA_FireWeapon::FireHitscanShot(
 
 	DamageSpecHandle.Data->SetSetByCallerMagnitude(TAG_Data_Damage, FireConfig.BaseDamage);
 	SourceAbilitySystem->ApplyGameplayEffectSpecToTarget(*DamageSpecHandle.Data.Get(), TargetAbilitySystem);
-}
-
-void UGA_FireWeapon::FireProjectileShot(
-	APawn* ShooterPawn,
-	AShooterWeaponBase* EquippedWeaponActor,
-	UAbilitySystemComponent* SourceAbilitySystem,
-	const FWeaponFireConfig& FireConfig,
-	const FTransform& MuzzleTransform)
-{
-	if (ShooterPawn == nullptr || SourceAbilitySystem == nullptr || FireConfig.ProjectileClass == nullptr)
-	{
-		return;
-	}
-
-	const FRotator SpawnRotation = ShooterPawn->GetBaseAimRotation();
-	const FTransform SpawnTransform(SpawnRotation, MuzzleTransform.GetLocation());
-
-	FActorSpawnParameters SpawnParameters;
-	SpawnParameters.Owner = ShooterPawn;
-	SpawnParameters.Instigator = ShooterPawn;
-	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	AShooterProjectileBase* Projectile = GetWorld()->SpawnActor<AShooterProjectileBase>(
-		FireConfig.ProjectileClass,
-		SpawnTransform,
-		SpawnParameters);
-
-	if (Projectile == nullptr)
-	{
-		UE_LOG(LogShooterGame, Warning, TEXT("%s failed to spawn a projectile."), *ShooterPawn->GetName());
-		return;
-	}
-
-	Projectile->InitializeProjectile(SourceAbilitySystem, FireConfig.DamageEffectClass, FireConfig.BaseDamage);
-
-	ExecuteFireCue(ShooterPawn, EquippedWeaponActor, SourceAbilitySystem, MuzzleTransform.GetLocation(), SpawnRotation.Vector());
 }
 
 void UGA_FireWeapon::ExecuteFireCue(

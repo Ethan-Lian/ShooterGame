@@ -2,16 +2,19 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "MultiplayerSessionsSubsystem.h"
+#include "LobbyInviteSubsystem.h"
 #include "LobbyInvitePanelWidget.generated.h"
 
 class UButton;
 class UPanelWidget;
 class UTextBlock;
 class ULobbyFriendRowWidget;
-class UMultiplayerSessionsSubsystem;
+class ULobbyInviteSubsystem;
 
-UCLASS(Blueprintable)
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLobbyInvitePanelCloseRequested);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLobbyInvitePanelStartRequested);
+
+UCLASS()
 class MULTIPLAYERSESSION_API ULobbyInvitePanelWidget : public UUserWidget
 {
 	GENERATED_BODY()
@@ -23,27 +26,34 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer Sessions|Lobby Invite")
 	void RebuildFriendRows();
 
+	UPROPERTY(BlueprintAssignable, Category = "Multiplayer Sessions|Lobby Invite")
+	FOnLobbyInvitePanelCloseRequested OnCloseRequested;
+
+	UPROPERTY(BlueprintAssignable, Category = "Multiplayer Sessions|Lobby Invite")
+	FOnLobbyInvitePanelStartRequested OnStartRequested;
+
 protected:
+	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Multiplayer Sessions|Lobby Invite")
 	TSubclassOf<ULobbyFriendRowWidget> FriendRowWidgetClass;
 
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
-	TObjectPtr<UTextBlock> StatusText;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> NativeStatusText;
 
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
-	TObjectPtr<UPanelWidget> FriendListBox;
+	UPROPERTY(Transient)
+	TObjectPtr<UPanelWidget> NativeFriendListBox;
 
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
-	TObjectPtr<UButton> RefreshButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> NativeRefreshButton;
 
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
-	TObjectPtr<UButton> StartButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> NativeStartButton;
 
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
-	TObjectPtr<UButton> CloseButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> NativeCloseButton;
 
 private:
 	UFUNCTION()
@@ -61,7 +71,8 @@ private:
 	UFUNCTION()
 	void HandleInviteStatusChanged(FText StatusMessage);
 
-	bool ResolveMultiplayerSessionsSubsystem();
+	bool ResolveLobbyInviteSubsystem();
+	void BuildNativeWidgetTree();
 	void BindButtonDelegates();
 	void UnbindButtonDelegates();
 	void BindSubsystemDelegates();
@@ -70,5 +81,5 @@ private:
 	void SetStatusMessage(const FText& StatusMessage);
 
 	UPROPERTY(Transient)
-	TObjectPtr<UMultiplayerSessionsSubsystem> MultiplayerSessionsSubsystem;
+	TObjectPtr<ULobbyInviteSubsystem> LobbyInviteSubsystem;
 };

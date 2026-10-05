@@ -5,7 +5,6 @@
 
 class UShooterInventoryComponent;
 class UShooterWeaponEquipmentComponent;
-class UShooterWeaponInteractionComponent;
 
 UINTERFACE(MinimalAPI)
 class UShooterEquipmentInterface : public UInterface
@@ -21,9 +20,7 @@ public:
 	// Returns the long-lived logical weapon inventory for this avatar.
 	virtual UShooterInventoryComponent* GetShooterInventoryComponent() const = 0;
 
-	// Returns the component that owns equipped weapon state and equip/drop behavior.
+	// Returns the component that owns fixed weapon state and presentation.
 	virtual UShooterWeaponEquipmentComponent* GetShooterWeaponEquipmentComponent() const = 0;
 
-	// Returns the component that owns local pickup targeting and prompt state.
-	virtual UShooterWeaponInteractionComponent* GetShooterWeaponInteractionComponent() const = 0;
 };

@@ -4,10 +4,8 @@
 #include "OnlineSubsystem.h"
 #include "OnlineSessionSettings.h"
 #include "OnlineSubsystemUtils.h"
-#include "GameFramework/GameModeBase.h"
 #include "GameFramework/PlayerController.h"
 #include "Interfaces/OnlineExternalUIInterface.h"
-#include "Interfaces/OnlinePresenceInterface.h"
 #include "Misc/App.h"
 #include "TimerManager.h"
 #include "UObject/UObjectGlobals.h"
@@ -20,21 +18,12 @@ namespace MultiplayerSessionMetadataKeys
 	const FName SessionBuildId(TEXT("SessionBuildId"));
 }
 
-namespace MultiplayerSessionUI
-{
-	const FString SteamDefaultFriendsListName(EFriendsLists::ToString(EFriendsLists::Default));
-	const FString GameplayMapPath(TEXT("/Game/ShooterGameContent/Maps/GameLevel?listen"));
-}
-
 UMultiplayerSessionsSubsystem::UMultiplayerSessionsSubsystem() :   
 	CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(this, &ThisClass::OnCreateSessionComplete)),
 	JoinSessionCompleteDelegate(FOnJoinSessionCompleteDelegate::CreateUObject(this, &ThisClass::OnJoinSessionComplete)),
 	DestroySessionCompleteDelegate(FOnDestroySessionCompleteDelegate::CreateUObject(this, &ThisClass::OnDestroySessionComplete)),
-	StartSessionCompleteDelegate(FOnStartSessionCompleteDelegate::CreateUObject(this, &ThisClass::OnStartSessionComplete)),
-	SessionUserInviteAcceptedDelegate(FOnSessionUserInviteAcceptedDelegate::CreateUObject(this, &ThisClass::OnSessionUserInviteAccepted)),
-	ReadSteamFriendsCompleteDelegate(FOnReadFriendsListComplete::CreateUObject(this, &ThisClass::OnReadSteamFriendsComplete))
+	SessionUserInviteAcceptedDelegate(FOnSessionUserInviteAcceptedDelegate::CreateUObject(this, &ThisClass::OnSessionUserInviteAccepted))
 {
-	LobbyInviteStatusText = FText::FromString(TEXT("Steam friends not loaded."));
 }
 
 void UMultiplayerSessionsSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -53,8 +42,6 @@ void UMultiplayerSessionsSubsystem::Deinitialize()
 	{
 		World->GetTimerManager().ClearAllTimersForObject(this);
 	}
-
-	HideLobbyInvitePanel();
 
 	if (PostLoadMapWithWorldDelegateHandle.IsValid())
 	{
@@ -157,10 +144,6 @@ void UMultiplayerSessionsSubsystem::DestroySession()
 	}
 }
 
-void UMultiplayerSessionsSubsystem::StartSession()
-{
-}
-
 bool UMultiplayerSessionsSubsystem::ShowSteamInviteUI()
 {
 	if (!RefreshOnlineSessionInterface())
@@ -192,127 +175,16 @@ bool UMultiplayerSessionsSubsystem::ShowSteamInviteUI()
 	return bOpened;
 }
 
-void UMultiplayerSessionsSubsystem::RefreshSteamFriendsList()
-{
-	IOnlineFriendsPtr FriendsInterface = Online::GetFriendsInterface(GetWorld());
-	if (!FriendsInterface.IsValid())
-	{
-		CachedSteamFriends.Reset();
-		BroadcastSteamFriendsListUpdated();
-		SetLobbyInviteStatus(FText::FromString(TEXT("Steam friends interface is unavailable.")));
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("Cannot refresh Steam friends: friends interface is unavailable."));
-		return;
-	}
-
-	SetLobbyInviteStatus(FText::FromString(TEXT("Reading Steam friends...")));
-	const bool bReadStarted = FriendsInterface->ReadFriendsList(
-		0,
-		MultiplayerSessionUI::SteamDefaultFriendsListName,
-		ReadSteamFriendsCompleteDelegate);
-
-	if (!bReadStarted)
-	{
-		CachedSteamFriends.Reset();
-		BroadcastSteamFriendsListUpdated();
-		SetLobbyInviteStatus(FText::FromString(TEXT("Failed to start Steam friends refresh.")));
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("ReadFriendsList failed to start."));
-	}
-}
-
-bool UMultiplayerSessionsSubsystem::SendSteamInviteToFriendByIndex(int32 FriendIndex)
-{
-	if (!CachedSteamFriends.IsValidIndex(FriendIndex) || !CachedSteamFriends[FriendIndex].FriendId.IsValid())
-	{
-		SetLobbyInviteStatus(FText::FromString(TEXT("Invalid friend selection.")));
-		return false;
-	}
-
-	const FSteamFriendInviteEntry& FriendEntry = CachedSteamFriends[FriendIndex];
-	const bool bSent = SendSteamInviteToFriend(*FriendEntry.FriendId);
-	SetLobbyInviteStatus(FText::FromString(FString::Printf(
-		TEXT("%s %s."),
-		bSent ? TEXT("Invite sent to") : TEXT("Failed to invite"),
-		*FriendEntry.DisplayName)));
-	return bSent;
-}
-
-bool UMultiplayerSessionsSubsystem::SendSteamInviteToFriendByIdString(const FString& FriendIdString)
-{
-	const FSteamFriendInviteEntry* FriendEntry = CachedSteamFriends.FindByPredicate(
-		[&FriendIdString](const FSteamFriendInviteEntry& Candidate)
-		{
-			return Candidate.FriendIdString == FriendIdString;
-		});
-
-	if (FriendEntry == nullptr || !FriendEntry->FriendId.IsValid())
-	{
-		SetLobbyInviteStatus(FText::FromString(TEXT("Invalid friend selection.")));
-		return false;
-	}
-
-	const bool bSent = SendSteamInviteToFriend(*FriendEntry->FriendId);
-	SetLobbyInviteStatus(FText::FromString(FString::Printf(
-		TEXT("%s %s."),
-		bSent ? TEXT("Invite sent to") : TEXT("Failed to invite"),
-		*FriendEntry->DisplayName)));
-	return bSent;
-}
-
-bool UMultiplayerSessionsSubsystem::SendSteamInviteToFriend(const FUniqueNetId& FriendId)
-{
-	if (!RefreshOnlineSessionInterface())
-	{
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("Cannot send Steam invite: session interface is unavailable."));
-		return false;
-	}
-
-	const FNamedOnlineSession* CurrentSession = OnlineSessionInterface->GetNamedSession(NAME_GameSession);
-	if (CurrentSession == nullptr || !CurrentSession->SessionInfo.IsValid())
-	{
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("Cannot send Steam invite: no valid game session exists."));
-		return false;
-	}
-
-	return OnlineSessionInterface->SendSessionInviteToFriend(0, NAME_GameSession, FriendId);
-}
-
-TArray<FSteamFriendInviteEntry> UMultiplayerSessionsSubsystem::GetCachedSteamFriends() const
-{
-	return CachedSteamFriends;
-}
-
-FText UMultiplayerSessionsSubsystem::GetLobbyInviteStatus() const
-{
-	return LobbyInviteStatusText;
-}
-
 bool UMultiplayerSessionsSubsystem::CanShowHostInvitePanel() const
 {
 	UWorld* World = GetWorld();
-	if (!World || World->GetNetMode() == NM_Client)
+	if (!World || World->GetNetMode() == NM_Client || World->GetNetMode() == NM_DedicatedServer)
 	{
 		return false;
 	}
 
 	const IOnlineSessionPtr SessionInterface = Online::GetSessionInterface(World);
 	return SessionInterface.IsValid() && SessionInterface->GetNamedSession(NAME_GameSession) != nullptr;
-}
-
-bool UMultiplayerSessionsSubsystem::ConsumePendingLobbyInvitePanelRequest()
-{
-	if (!bPendingLobbyInvitePanelRequest)
-	{
-		return false;
-	}
-
-	if (!CanShowHostInvitePanel())
-	{
-		bPendingLobbyInvitePanelRequest = false;
-		return false;
-	}
-
-	bPendingLobbyInvitePanelRequest = false;
-	return true;
 }
 
 void UMultiplayerSessionsSubsystem::ShowLobbyInvitePanel()
@@ -323,43 +195,12 @@ void UMultiplayerSessionsSubsystem::ShowLobbyInvitePanel()
 		return;
 	}
 
-	bPendingLobbyInvitePanelRequest = true;
 	OnLobbyInvitePanelRequested.Broadcast();
-	RefreshSteamFriendsList();
-}
-
-void UMultiplayerSessionsSubsystem::HideLobbyInvitePanel()
-{
-	bPendingLobbyInvitePanelRequest = false;
-}
-
-bool UMultiplayerSessionsSubsystem::StartHostedGame()
-{
-	UWorld* World = GetWorld();
-	if (!World || World->GetNetMode() == NM_Client)
-	{
-		SetLobbyInviteStatus(FText::FromString(TEXT("Only the host can start the game.")));
-		return false;
-	}
-
-	HideLobbyInvitePanel();
-
-	if (AGameModeBase* GameMode = World->GetAuthGameMode())
-	{
-		GameMode->bUseSeamlessTravel = true;
-	}
-
-	return World->ServerTravel(MultiplayerSessionUI::GameplayMapPath);
 }
 
 void UMultiplayerSessionsSubsystem::RequestShowLobbyInvitePanelAfterTravel()
 {
 	bShowLobbyInvitePanelAfterTravel = true;
-}
-
-void UMultiplayerSessionsSubsystem::RequestOpenInviteUIAfterTravel()
-{
-	RequestShowLobbyInvitePanelAfterTravel();
 }
 
 
@@ -467,11 +308,6 @@ void UMultiplayerSessionsSubsystem::OnDestroySessionComplete(FName SessionName, 
 	MultiplayerOnDestroySessionCompleteDelegate.Broadcast(bWasSuccessful);
 }
 
-void UMultiplayerSessionsSubsystem::OnStartSessionComplete(FName SessionName, bool bWasSuccessful)
-{
-	
-}
-
 void UMultiplayerSessionsSubsystem::OnSessionUserInviteAccepted(
 	bool bWasSuccessful,
 	int32 ControllerId,
@@ -493,62 +329,6 @@ void UMultiplayerSessionsSubsystem::OnSessionUserInviteAccepted(
 	}
 
 	JoinAcceptedInvite(InviteResult);
-}
-
-void UMultiplayerSessionsSubsystem::OnReadSteamFriendsComplete(
-	int32 LocalUserNum,
-	bool bWasSuccessful,
-	const FString& ListName,
-	const FString& ErrorStr)
-{
-	CachedSteamFriends.Reset();
-
-	if (!bWasSuccessful)
-	{
-		BroadcastSteamFriendsListUpdated();
-		SetLobbyInviteStatus(FText::FromString(FString::Printf(TEXT("Steam friends refresh failed: %s"), *ErrorStr)));
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("ReadFriendsList failed. List=%s Error=%s"), *ListName, *ErrorStr);
-		return;
-	}
-
-	IOnlineFriendsPtr FriendsInterface = Online::GetFriendsInterface(GetWorld());
-	if (!FriendsInterface.IsValid())
-	{
-		BroadcastSteamFriendsListUpdated();
-		SetLobbyInviteStatus(FText::FromString(TEXT("Steam friends interface became unavailable.")));
-		return;
-	}
-
-	TArray<TSharedRef<FOnlineFriend>> Friends;
-	if (!FriendsInterface->GetFriendsList(LocalUserNum, ListName, Friends))
-	{
-		BroadcastSteamFriendsListUpdated();
-		SetLobbyInviteStatus(FText::FromString(TEXT("Steam friends list is not available yet.")));
-		return;
-	}
-
-	for (const TSharedRef<FOnlineFriend>& Friend : Friends)
-	{
-		FSteamFriendInviteEntry FriendEntry;
-		FriendEntry.DisplayName = Friend->GetDisplayName();
-		FriendEntry.FriendId = Friend->GetUserId();
-		FriendEntry.FriendIdString = FriendEntry.FriendId.IsValid() ? FriendEntry.FriendId->ToString() : FString();
-		FriendEntry.bIsOnline = Friend->GetPresence().bIsOnline;
-		CachedSteamFriends.Add(FriendEntry);
-	}
-
-	CachedSteamFriends.Sort([](const FSteamFriendInviteEntry& Left, const FSteamFriendInviteEntry& Right)
-	{
-		if (Left.bIsOnline != Right.bIsOnline)
-		{
-			return Left.bIsOnline;
-		}
-
-		return Left.DisplayName < Right.DisplayName;
-	});
-
-	BroadcastSteamFriendsListUpdated();
-	SetLobbyInviteStatus(FText::FromString(FString::Printf(TEXT("%d Steam friends loaded."), CachedSteamFriends.Num())));
 }
 
 /*
@@ -719,15 +499,4 @@ void UMultiplayerSessionsSubsystem::OnPostLoadMapWithWorld(UWorld* LoadedWorld)
 void UMultiplayerSessionsSubsystem::TryShowPendingLobbyInvitePanel()
 {
 	ShowLobbyInvitePanel();
-}
-
-void UMultiplayerSessionsSubsystem::BroadcastSteamFriendsListUpdated()
-{
-	OnSteamFriendsListUpdated.Broadcast(CachedSteamFriends);
-}
-
-void UMultiplayerSessionsSubsystem::SetLobbyInviteStatus(const FText& StatusText)
-{
-	LobbyInviteStatusText = StatusText;
-	OnLobbyInviteStatusChanged.Broadcast(StatusText);
 }

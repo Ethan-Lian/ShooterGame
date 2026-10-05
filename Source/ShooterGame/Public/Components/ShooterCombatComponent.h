@@ -5,7 +5,6 @@
 
 class UAbilitySystemComponent;
 class UShooterWeaponEquipmentComponent;
-class UShooterWeaponInteractionComponent;
 
 UCLASS(ClassGroup = (ShooterGame), Blueprintable, BlueprintType, meta = (BlueprintSpawnableComponent))
 class SHOOTERGAME_API UShooterCombatComponent : public UActorComponent
@@ -56,9 +55,6 @@ private:
 
 	// Resolves the component that owns the equipped weapon and equip/drop logic.
 	UShooterWeaponEquipmentComponent* GetOwningWeaponEquipmentComponent() const;
-
-	// Resolves the component that owns local pickup targeting and view traces.
-	UShooterWeaponInteractionComponent* GetOwningWeaponInteractionComponent() const;
 
 	// Activates the startup fire ability on the authority path.
 	void HandleFireInputPressed();

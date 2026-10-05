@@ -4,20 +4,11 @@
 #include "GameplayTagContainer.h"
 #include "WeaponDataAsset.generated.h"
 
-class AShooterProjectileBase;
 class AShooterWeaponEquipmentActor;
-class AShooterWeaponPickupActor;
 class UGameplayEffect;
 class UNiagaraSystem;
 class USoundBase;
 class UStaticMesh;
-
-UENUM(BlueprintType)
-enum class EWeaponFireMode : uint8
-{
-	Hitscan,
-	Projectile
-};
 
 USTRUCT(BlueprintType)
 struct FWeaponFireConfig
@@ -26,12 +17,6 @@ struct FWeaponFireConfig
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	FGameplayTag WeaponTag;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
-	EWeaponFireMode FireMode = EWeaponFireMode::Hitscan;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
-	TSubclassOf<AShooterProjectileBase> ProjectileClass;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	TSubclassOf<UGameplayEffect> DamageEffectClass;
@@ -84,7 +69,7 @@ struct FWeaponPickupData
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon", meta = (ClampMin = "0"))
 	int32 CurrentReserveAmmo = 0;
 
-	// Returns whether the snapshot carries enough data to rebuild a logical weapon entry.
+	// Returns whether the snapshot carries enough data to describe the equipped weapon.
 	bool HasValidDefinition() const
 	{
 		return WeaponDefinition != nullptr;
@@ -101,9 +86,6 @@ public:
 	TSoftObjectPtr<UStaticMesh> WeaponMesh;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
-	TSubclassOf<AShooterWeaponPickupActor> PickupActorClass;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	TSubclassOf<AShooterWeaponEquipmentActor> EquipmentActorClass;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
@@ -111,9 +93,6 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	FTransform WeaponMeshRelativeTransform = FTransform::Identity;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
-	FTransform DroppedMeshRelativeTransform = FTransform::Identity;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	FWeaponFireConfig FireConfig;

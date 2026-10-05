@@ -41,7 +41,7 @@ private:
 	// Commits optional fire cost/cooldown before one shot leaves the weapon.
 	bool CommitFireShot();
 
-	// Validates the avatar/weapon chain and fires once using the configured weapon mode.
+	// Validates the avatar/weapon chain and fires one Hitscan shot.
 	bool FireSingleShot();
 
 	// Starts the next delay task for automatic fire.
@@ -56,14 +56,6 @@ private:
 
 	// Applies immediate damage through a muzzle-to-aim hitscan trace.
 	void FireHitscanShot(
-		APawn* ShooterPawn,
-		AShooterWeaponBase* EquippedWeaponActor,
-		UAbilitySystemComponent* SourceAbilitySystem,
-		const FWeaponFireConfig& FireConfig,
-		const FTransform& MuzzleTransform);
-
-	// Spawns the configured projectile for slower physical weapons.
-	void FireProjectileShot(
 		APawn* ShooterPawn,
 		AShooterWeaponBase* EquippedWeaponActor,
 		UAbilitySystemComponent* SourceAbilitySystem,

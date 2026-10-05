@@ -5,8 +5,6 @@
 #include "AbilitySystem/ShooterGameplayTags.h"
 #include "AbilitySystem/Abilities/GA_Death.h"
 #include "AbilitySystem/Abilities/GA_FireWeapon.h"
-#include "AbilitySystem/Abilities/GA_DropWeapon.h"
-#include "AbilitySystem/Abilities/GA_InteractWeapon.h"
 #include "AbilitySystem/Abilities/GA_Sprint.h"
 #include "AbilitySystem/Attributes/CombatAttributeSet.h"
 #include "AbilitySystem/Attributes/MovementAttributeSet.h"
@@ -30,8 +28,6 @@ AShooterPlayerState::AShooterPlayerState()
 	FireAbilityClass = UGA_FireWeapon::StaticClass();
 	DeathAbilityClass = UGA_Death::StaticClass();
 	SprintAbilityClass = UGA_Sprint::StaticClass();
-	InteractWeaponAbilityClass = UGA_InteractWeapon::StaticClass();
-	DropWeaponAbilityClass = UGA_DropWeapon::StaticClass();
 	InitializeAttributesEffectClass = UGE_InitializeAttributes::StaticClass();
 }
 
@@ -112,20 +108,6 @@ void AShooterPlayerState::GrantStartupAbilitiesIfNeeded()
 		FGameplayAbilitySpec SprintAbilitySpec(SprintAbilityClass, 1, INDEX_NONE, this);
 		SprintAbilitySpec.GetDynamicSpecSourceTags().AddTag(TAG_Input_Sprint);
 		AbilitySystemComponent->GiveAbility(SprintAbilitySpec);
-	}
-
-	if (InteractWeaponAbilityClass != nullptr)
-	{
-		FGameplayAbilitySpec InteractAbilitySpec(InteractWeaponAbilityClass, 3, INDEX_NONE, this);
-		InteractAbilitySpec.GetDynamicSpecSourceTags().AddTag(TAG_Input_Interact);
-		AbilitySystemComponent->GiveAbility(InteractAbilitySpec);
-	}
-
-	if (DropWeaponAbilityClass != nullptr)
-	{
-		FGameplayAbilitySpec DropAbilitySpec(DropWeaponAbilityClass, 4, INDEX_NONE, this);
-		DropAbilitySpec.GetDynamicSpecSourceTags().AddTag(TAG_Input_Drop);
-		AbilitySystemComponent->GiveAbility(DropAbilitySpec);
 	}
 
 	bStartupAbilitiesGranted = true;

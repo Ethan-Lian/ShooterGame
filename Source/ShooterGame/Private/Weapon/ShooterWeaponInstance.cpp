@@ -5,7 +5,6 @@
 void UShooterWeaponInstance::InitializeFromInventoryEntry(const FWeaponInventoryEntry& SourceEntry, AShooterWeaponEquipmentActor* InEquippedWeaponActor)
 {
 	ItemId = SourceEntry.ItemId;
-	SlotIndex = SourceEntry.SlotIndex;
 	WeaponDefinition = SourceEntry.WeaponDefinition;
 	FireConfig = FWeaponFireConfig();
 	AmmoConfig = FWeaponAmmoConfig();
@@ -25,11 +24,6 @@ void UShooterWeaponInstance::InitializeFromInventoryEntry(const FWeaponInventory
 	AmmoConfig = WeaponDefinition->AmmoConfig;
 	CharacterAttachSocketName = WeaponDefinition->CharacterAttachSocketName;
 	WeaponMeshRelativeTransform = WeaponDefinition->WeaponMeshRelativeTransform;
-}
-
-void UShooterWeaponInstance::SetEquippedWeaponActor(AShooterWeaponEquipmentActor* NewEquippedWeaponActor)
-{
-	EquippedWeaponActor = NewEquippedWeaponActor;
 }
 
 void UShooterWeaponInstance::ClearEquippedWeaponActor()

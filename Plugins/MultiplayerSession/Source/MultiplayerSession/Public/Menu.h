@@ -4,6 +4,8 @@
 #include "Menu.generated.h"
 
 class UButton;
+class UMultiplayerSessionUIManagerSubsystem;
+
 UCLASS()
 class MULTIPLAYERSESSION_API UMenu : public UUserWidget
 {
@@ -11,23 +13,18 @@ class MULTIPLAYERSESSION_API UMenu : public UUserWidget
 	
 public:
 	UFUNCTION(BlueprintCallable)
-	void MenuSetup(int32 NumberOfPublicConnections = 4, FString TypeOfMatch = FString(TEXT("FreeForAll")), FString Path = FString(TEXT("/Game/ThirdPerson/Lobby")));
+	void MenuSetup(int32 NumberOfPublicConnections = 4, FString TypeOfMatch = FString(TEXT("FreeForAll")), FString Path = FString(TEXT("/Game/ShooterGameContent/Maps/Lobby")));
 	
 	virtual bool Initialize() override;
-	
-	//这个函数是?
 	virtual void NativeDestruct() override;
+
 private:
-	
-	// The Subsystem designed to handle all online session functionality.
-	class UMultiplayerSessionsSubsystem* MultiplayerSessionsSubsystem;
+	UPROPERTY(Transient)
+	TObjectPtr<class UMultiplayerSessionsSubsystem> MultiplayerSessionsSubsystem;
 	
 	UPROPERTY(meta=(BindWidget))
-	UButton* HostButton;
-	
-	UPROPERTY(meta=(BindWidgetOptional))
-	UButton* JoinButton;
-	
+	TObjectPtr<UButton> HostButton;
+
 	UPROPERTY(BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
 	int32 NumPublicConnections{4};
 
@@ -35,21 +32,15 @@ private:
 	FString MatchType{TEXT("FreeForAll")};
 	
 	FString LobbyPath;
+
+	bool bIsTearingDown = false;
 	
 	UFUNCTION()
 	void HostButtonClicked();
 
 	void MenuTearDown();
-	
-	/*
-	 * custom callbacks for the multiplayerSessionSubsystem's custom delegates
-	 */
+	UMultiplayerSessionUIManagerSubsystem* GetUIManagerSubsystem() const;
+
 	UFUNCTION()
 	void OnCreateSessionComplete(bool bWasSuccessful);
-
-	UFUNCTION()
-	void OnDestroySessionComplete(bool bWasSuccessful);
-
-	UFUNCTION()
-	void OnStartSessionComplete(bool bWasSuccessful);
 };

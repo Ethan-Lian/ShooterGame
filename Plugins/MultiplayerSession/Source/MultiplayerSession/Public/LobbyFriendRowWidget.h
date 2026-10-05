@@ -2,14 +2,14 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "MultiplayerSessionsSubsystem.h"
+#include "LobbyInviteSubsystem.h"
 #include "LobbyFriendRowWidget.generated.h"
 
 class UButton;
 class UTextBlock;
-class UMultiplayerSessionsSubsystem;
+class ULobbyInviteSubsystem;
 
-UCLASS(Blueprintable)
+UCLASS()
 class MULTIPLAYERSESSION_API ULobbyFriendRowWidget : public UUserWidget
 {
 	GENERATED_BODY()
@@ -19,17 +19,18 @@ public:
 	void SetupFriendRow(const FSteamFriendInviteEntry& InFriendEntry);
 
 protected:
+	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
-	TObjectPtr<UTextBlock> NameText;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> NativeNameText;
 
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
-	TObjectPtr<UTextBlock> StatusText;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> NativeStatusText;
 
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
-	TObjectPtr<UButton> InviteButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> NativeInviteButton;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Multiplayer Sessions|Lobby Invite")
 	FSteamFriendInviteEntry FriendEntry;
@@ -38,6 +39,7 @@ private:
 	UFUNCTION()
 	void HandleInviteClicked();
 
-	UMultiplayerSessionsSubsystem* GetMultiplayerSessionsSubsystem() const;
+	ULobbyInviteSubsystem* GetLobbyInviteSubsystem() const;
+	void BuildNativeWidgetTree();
 	void RefreshDisplayedFriend();
 };

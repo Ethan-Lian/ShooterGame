@@ -13,8 +13,6 @@ UE_DEFINE_GAMEPLAY_TAG(TAG_Data_Damage, "Data.Damage");
 
 UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Fire, "Input.Fire");
 UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Sprint, "Input.Sprint");
-UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Interact, "Input.Interact");
-UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Drop, "Input.Drop");
 UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Move, "Input.Move");
 UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Look, "Input.Look");
 UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Jump, "Input.Jump");
