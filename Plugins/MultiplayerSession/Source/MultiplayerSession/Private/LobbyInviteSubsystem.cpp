@@ -1,47 +1,60 @@
 #include "LobbyInviteSubsystem.h"
 
+#include "Engine/GameInstance.h"
+#include "Interfaces/OnlinePresenceInterface.h"
+#include "MultiplayerSessionFlowSubsystem.h"
 #include "Online.h"
+#include "Online/OnlineSessionNames.h"
 #include "OnlineSessionSettings.h"
 #include "OnlineSubsystemUtils.h"
-#include "Interfaces/OnlinePresenceInterface.h"
+
+#define LOCTEXT_NAMESPACE "LobbyInvite"
 
 DEFINE_LOG_CATEGORY_STATIC(LogLobbyInviteSubsystem, Log, All);
 
-namespace LobbyInvite
+namespace
 {
 	const FString SteamDefaultFriendsListName(EFriendsLists::ToString(EFriendsLists::Default));
 }
 
 ULobbyInviteSubsystem::ULobbyInviteSubsystem()
-	: ReadSteamFriendsCompleteDelegate(FOnReadFriendsListComplete::CreateUObject(this, &ThisClass::OnReadSteamFriendsComplete))
 {
-	LobbyInviteStatusText = FText::FromString(TEXT("Steam friends not loaded."));
+	LobbyInviteStatusText = LOCTEXT("NotLoaded", "尚未加载 Steam 好友。");
+}
+
+void ULobbyInviteSubsystem::Deinitialize()
+{
+	bDeinitializing = true;
+	ActiveRefreshId = 0;
+	RefreshFriendsInterface.Reset();
+	Super::Deinitialize();
 }
 
 void ULobbyInviteSubsystem::RefreshSteamFriendsList()
 {
-	IOnlineFriendsPtr FriendsInterface = Online::GetFriendsInterface(GetWorld());
-	if (!FriendsInterface.IsValid())
+	if (bDeinitializing || ActiveRefreshId != 0)
 	{
-		CachedSteamFriends.Reset();
-		BroadcastSteamFriendsListUpdated();
-		SetLobbyInviteStatus(FText::FromString(TEXT("Steam friends interface is unavailable.")));
-		UE_LOG(LogLobbyInviteSubsystem, Warning, TEXT("Cannot refresh Steam friends: friends interface is unavailable."));
 		return;
 	}
-
-	SetLobbyInviteStatus(FText::FromString(TEXT("Reading Steam friends...")));
-	const bool bReadStarted = FriendsInterface->ReadFriendsList(
-		0,
-		LobbyInvite::SteamDefaultFriendsListName,
-		ReadSteamFriendsCompleteDelegate);
-
-	if (!bReadStarted)
+	const uint64 RefreshId = ++NextRefreshId;
+	ActiveRefreshId = RefreshId;
+	RefreshFriendsInterface = GetWorld() ? Online::GetFriendsInterface(GetWorld()) : nullptr;
+	if (!RefreshFriendsInterface.IsValid())
 	{
-		CachedSteamFriends.Reset();
-		BroadcastSteamFriendsListUpdated();
-		SetLobbyInviteStatus(FText::FromString(TEXT("Failed to start Steam friends refresh.")));
-		UE_LOG(LogLobbyInviteSubsystem, Warning, TEXT("ReadFriendsList failed to start."));
+		OnReadSteamFriendsComplete(0, false, SteamDefaultFriendsListName, TEXT("Steam friends interface is unavailable."), RefreshId);
+		return;
+	}
+	const IOnlineFriendsPtr FriendsInterface = RefreshFriendsInterface;
+	SetLobbyInviteStatus(LOCTEXT("Reading", "正在加载 Steam 好友…"));
+	if (bDeinitializing || ActiveRefreshId != RefreshId)
+	{
+		return;
+	}
+	const bool bReadStarted = FriendsInterface->ReadFriendsList(0, SteamDefaultFriendsListName,
+		FOnReadFriendsListComplete::CreateUObject(this, &ThisClass::OnReadSteamFriendsComplete, RefreshId));
+	if (!bReadStarted && ActiveRefreshId == RefreshId && !bDeinitializing)
+	{
+		OnReadSteamFriendsComplete(0, false, SteamDefaultFriendsListName, TEXT("Could not start reading Steam friends."), RefreshId);
 	}
 }
 
@@ -52,38 +65,32 @@ bool ULobbyInviteSubsystem::SendSteamInviteToFriendByIdString(const FString& Fri
 		{
 			return Candidate.FriendIdString == FriendIdString;
 		});
-
-	if (FriendEntry == nullptr || !FriendEntry->FriendId.IsValid())
+	if (!FriendEntry || !FriendEntry->FriendId.IsValid())
 	{
-		SetLobbyInviteStatus(FText::FromString(TEXT("Invalid friend selection.")));
+		SetLobbyInviteStatus(LOCTEXT("InvalidFriend", "好友信息已失效，请刷新列表。"));
 		return false;
 	}
-
-	const bool bSent = SendSteamInviteToFriend(*FriendEntry->FriendId);
-	SetLobbyInviteStatus(FText::FromString(FString::Printf(
-		TEXT("%s %s."),
-		bSent ? TEXT("Invite sent to") : TEXT("Failed to invite"),
-		*FriendEntry->DisplayName)));
+	// Platform calls may reenter application code; do not retain a pointer into the mutable cache.
+	const FString DisplayName = FriendEntry->DisplayName;
+	const FUniqueNetIdPtr FriendId = FriendEntry->FriendId;
+	const bool bSent = SendSteamInviteToFriend(*FriendId);
+	SetLobbyInviteStatus(FText::Format(bSent ? LOCTEXT("InviteSent", "已向 {0} 发送邀请。")
+		: LOCTEXT("InviteFailed", "向 {0} 发送邀请失败，请稍后重试。"), FText::FromString(DisplayName)));
 	return bSent;
 }
 
 bool ULobbyInviteSubsystem::SendSteamInviteToFriend(const FUniqueNetId& FriendId)
 {
-	IOnlineSessionPtr OnlineSessionInterface = Online::GetSessionInterface(GetWorld());
-	if (!OnlineSessionInterface.IsValid())
+	const UMultiplayerSessionFlowSubsystem* Flow = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<UMultiplayerSessionFlowSubsystem>() : nullptr;
+	if (bDeinitializing || !Flow || !Flow->CanInviteFriends())
 	{
-		UE_LOG(LogLobbyInviteSubsystem, Warning, TEXT("Cannot send Steam invite: session interface is unavailable."));
 		return false;
 	}
-
-	const FNamedOnlineSession* CurrentSession = OnlineSessionInterface->GetNamedSession(NAME_GameSession);
-	if (CurrentSession == nullptr || !CurrentSession->SessionInfo.IsValid())
-	{
-		UE_LOG(LogLobbyInviteSubsystem, Warning, TEXT("Cannot send Steam invite: no valid game session exists."));
-		return false;
-	}
-
-	return OnlineSessionInterface->SendSessionInviteToFriend(0, NAME_GameSession, FriendId);
+	const IOnlineSessionPtr SessionInterface = Online::GetSessionInterface(GetWorld());
+	const FNamedOnlineSession* Session = SessionInterface.IsValid() ? SessionInterface->GetNamedSession(NAME_GameSession) : nullptr;
+	return Session && Session->SessionInfo.IsValid()
+		&& SessionInterface->SendSessionInviteToFriend(0, NAME_GameSession, FriendId);
 }
 
 TArray<FSteamFriendInviteEntry> ULobbyInviteSubsystem::GetCachedSteamFriends() const
@@ -96,69 +103,62 @@ FText ULobbyInviteSubsystem::GetLobbyInviteStatus() const
 	return LobbyInviteStatusText;
 }
 
-void ULobbyInviteSubsystem::OnReadSteamFriendsComplete(
-	int32 LocalUserNum,
-	bool bWasSuccessful,
-	const FString& ListName,
-	const FString& ErrorStr)
+void ULobbyInviteSubsystem::OnReadSteamFriendsComplete(int32 LocalUserNum, bool bWasSuccessful,
+	const FString& ListName, const FString& ErrorStr, uint64 RefreshId)
 {
-	CachedSteamFriends.Reset();
-
-	if (!bWasSuccessful)
+	if (bDeinitializing || ActiveRefreshId != RefreshId)
 	{
-		BroadcastSteamFriendsListUpdated();
-		SetLobbyInviteStatus(FText::FromString(FString::Printf(TEXT("Steam friends refresh failed: %s"), *ErrorStr)));
-		UE_LOG(LogLobbyInviteSubsystem, Warning, TEXT("ReadFriendsList failed. List=%s Error=%s"), *ListName, *ErrorStr);
 		return;
 	}
-
-	IOnlineFriendsPtr FriendsInterface = Online::GetFriendsInterface(GetWorld());
-	if (!FriendsInterface.IsValid())
-	{
-		BroadcastSteamFriendsListUpdated();
-		SetLobbyInviteStatus(FText::FromString(TEXT("Steam friends interface became unavailable.")));
-		return;
-	}
-
 	TArray<TSharedRef<FOnlineFriend>> Friends;
-	if (!FriendsInterface->GetFriendsList(LocalUserNum, ListName, Friends))
+	bWasSuccessful = bWasSuccessful && RefreshFriendsInterface.IsValid()
+		&& RefreshFriendsInterface->GetFriendsList(LocalUserNum, ListName, Friends);
+	CachedSteamFriends.Reset();
+	if (bWasSuccessful)
 	{
-		BroadcastSteamFriendsListUpdated();
-		SetLobbyInviteStatus(FText::FromString(TEXT("Steam friends list is not available yet.")));
-		return;
-	}
-
-	for (const TSharedRef<FOnlineFriend>& Friend : Friends)
-	{
-		FSteamFriendInviteEntry FriendEntry;
-		FriendEntry.DisplayName = Friend->GetDisplayName();
-		FriendEntry.FriendId = Friend->GetUserId();
-		FriendEntry.FriendIdString = FriendEntry.FriendId.IsValid() ? FriendEntry.FriendId->ToString() : FString();
-		FriendEntry.bIsOnline = Friend->GetPresence().bIsOnline;
-		CachedSteamFriends.Add(FriendEntry);
-	}
-
-	CachedSteamFriends.Sort([](const FSteamFriendInviteEntry& Left, const FSteamFriendInviteEntry& Right)
-	{
-		if (Left.bIsOnline != Right.bIsOnline)
+		for (const TSharedRef<FOnlineFriend>& Friend : Friends)
 		{
-			return Left.bIsOnline;
+			FSteamFriendInviteEntry Entry;
+			Entry.DisplayName = Friend->GetDisplayName();
+			Entry.FriendId = Friend->GetUserId();
+			Entry.FriendIdString = Entry.FriendId->ToString();
+			Entry.bIsOnline = Friend->GetPresence().bIsOnline;
+			CachedSteamFriends.Add(MoveTemp(Entry));
 		}
-
-		return Left.DisplayName < Right.DisplayName;
-	});
-
+		CachedSteamFriends.Sort([](const FSteamFriendInviteEntry& Left, const FSteamFriendInviteEntry& Right)
+		{
+			return Left.bIsOnline != Right.bIsOnline ? Left.bIsOnline : Left.DisplayName < Right.DisplayName;
+		});
+		LobbyInviteStatusText = FText::Format(LOCTEXT("Loaded", "已加载 {0} 位好友，可以发送邀请。"), FText::AsNumber(CachedSteamFriends.Num()));
+	}
+	else
+	{
+		LobbyInviteStatusText = LOCTEXT("ReadFailed", "好友列表加载失败，请确认 Steam 已登录后重试。");
+		UE_LOG(LogLobbyInviteSubsystem, Warning, TEXT("Friends refresh failed: %s"), *ErrorStr);
+	}
+	ActiveRefreshId = 0;
+	RefreshFriendsInterface.Reset();
+	const FText CompletedStatus = LobbyInviteStatusText;
 	BroadcastSteamFriendsListUpdated();
-	SetLobbyInviteStatus(FText::FromString(FString::Printf(TEXT("%d Steam friends loaded."), CachedSteamFriends.Num())));
+	if (!bDeinitializing && NextRefreshId == RefreshId)
+	{
+		OnLobbyInviteStatusChanged.Broadcast(CompletedStatus);
+	}
 }
 
 void ULobbyInviteSubsystem::BroadcastSteamFriendsListUpdated()
 {
-	OnSteamFriendsListUpdated.Broadcast(CachedSteamFriends);
+	const TArray<FSteamFriendInviteEntry> Snapshot = CachedSteamFriends;
+	OnSteamFriendsListUpdated.Broadcast(Snapshot);
 }
 
 void ULobbyInviteSubsystem::SetLobbyInviteStatus(const FText& StatusText)
 {
-	LobbyInviteStatusText = StatusText;
-	OnLobbyInviteStatusChanged.Broadcast(StatusText);
+	if (!bDeinitializing)
+	{
+		LobbyInviteStatusText = StatusText;
+		OnLobbyInviteStatusChanged.Broadcast(StatusText);
+	}
 }
+
+#undef LOCTEXT_NAMESPACE

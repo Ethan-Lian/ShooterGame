@@ -7,9 +7,8 @@
 
 class UButton;
 class UTextBlock;
-class ULobbyInviteSubsystem;
 
-UCLASS()
+UCLASS(Abstract)
 class MULTIPLAYERSESSION_API ULobbyFriendRowWidget : public UUserWidget
 {
 	GENERATED_BODY()
@@ -19,27 +18,28 @@ public:
 	void SetupFriendRow(const FSteamFriendInviteEntry& InFriendEntry);
 
 protected:
-	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> NativeNameText;
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> FriendName;
 
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> NativeStatusText;
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> PresenceText;
 
-	UPROPERTY(Transient)
-	TObjectPtr<UButton> NativeInviteButton;
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> InitialText;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Multiplayer Sessions|Lobby Invite")
-	FSteamFriendInviteEntry FriendEntry;
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> InviteButton;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> InviteLabel;
 
 private:
 	UFUNCTION()
 	void HandleInviteClicked();
-
-	ULobbyInviteSubsystem* GetLobbyInviteSubsystem() const;
-	void BuildNativeWidgetTree();
 	void RefreshDisplayedFriend();
+	FSteamFriendInviteEntry FriendEntry;
+	bool bInviteSent = false;
 };

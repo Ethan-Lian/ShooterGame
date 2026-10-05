@@ -1,8 +1,8 @@
 # ShooterGame
 
-UE5.7 多人第三人称射击项目，围绕 GAS、服务端权威和清晰的 Pawn 生命周期构建。
+UE5.8 多人第三人称射击项目，围绕 GAS、服务端权威和清晰的 Pawn 生命周期构建。
 
-当前收敛为一张测试地图、可配置人数的 Listen Server 房间、一把固定 Hitscan 武器，重点是服务器权威、射击预测、弱网验证与网络性能优化。固定武器的出生与重生流程已实现，2026-10-05 开发者手动验证反馈无异常；此后完成的旧玩法删除仍待游戏内复测。保留 Steam 好友加入入口，本地双窗口用于日常调试，不增加固定分队和团队比赛规则。Git 保管代码、配置和重要文档，游戏资源与重启计划由本地单独保管。当前实现见 [架构文档](docs/arch/architecture.md)，生命周期与验证记录见 [Pawn Lifecycle](docs/systems/pawn-lifecycle.md)。
+当前收敛为一张测试地图、可配置人数的 Listen Server 房间、一把固定 Hitscan 武器。玩法精简已完成，2026-10-05 开发者确认双人回归通过，覆盖双方持枪、双向伤害/击杀、连续重生后的移动/瞄准/开火/血量恢复，以及死亡不掉落、无重复武器或残留表现。下一步理解保留的核心链路，再实现射击预测与弱网性能优化。Steam 好友加入入口保留；真实 Steam 好友联机、完整 Travel、多客户端观察与弱网仍待独立验证。Git 保管代码、配置和重要文档，游戏资源与重启计划由本地单独保管。当前实现见 [架构文档](docs/arch/architecture.md)，生命周期与验证记录见 [Pawn Lifecycle](docs/systems/pawn-lifecycle.md)。
 
 ## Overview
 
@@ -31,7 +31,7 @@ ShooterGame 是一个个人开发的多人射击项目。当前玩法包含移�
 flowchart LR
     INPUT["Enhanced Input"] --> PC["PlayerController<br/>local input routing"]
     PS["PlayerState<br/>long-lived state"] --> ASC["ASC + Attributes"]
-    PS --> INV["Inventory<br/>logical items"]
+    PS --> INV["Inventory<br/>single fixed weapon entry"]
     PC --> PAWN["PlayerCharacter<br/>current Avatar"]
     PAWN --> EXT["PawnExtension<br/>lifecycle coordination"]
     PAWN --> COMP["Combat / Movement / Equipment"]

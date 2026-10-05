@@ -42,7 +42,7 @@ flowchart TD
 
 ### Seamless Travel boundary
 
-Session 插件的 `StartHostedGame()` 路径会在 Authority 端设置 `GameMode->bUseSeamlessTravel = true` 后执行 `ServerTravel`。这证明项目启用了 Seamless Travel 路径，但当前文档没有足够运行证据证明 ASC、Inventory、PawnExtension 和 UI 在完整旅行前后都保持正确；该场景仍标记为待验证。
+Session 插件的 `MultiplayerSessionFlowSubsystem.StartHostedGame()` 路径会在 Authority 端设置 `GameMode->bUseSeamlessTravel = true` 后执行 `ServerTravel`。这证明项目启用了 Seamless Travel 路径，但当前文档没有足够运行证据证明 ASC、Inventory、PawnExtension 和 UI 在完整旅行前后都保持正确；该场景仍标记为待验证。
 
 ## Runtime Flow 1: Pawn Initialization
 
@@ -58,7 +58,7 @@ BeginPlay / OnRep_PlayerState / NotifyControllerChanged
   -> refresh Equipment: authority grants fixed Hitscan weapon, clients refresh presentation
 ```
 
-`PossessedBy` 由引擎的 Controller 变更路径最终进入 `NotifyControllerChanged`；客户端在 `OnRep_PlayerState` 后补齐依赖。所有入口调用同一套幂等检查，不各自复制初始化逻辑。详细清理顺序见 [Pawn 生命周期文档](systems/pawn-lifecycle.md)。
+`PossessedBy` 由引擎的 Controller 变更路径最终进入 `NotifyControllerChanged`；客户端在 `OnRep_PlayerState` 后补齐依赖。所有入口调用同一套幂等检查，不各自复制初始化逻辑。详细清理顺序见 [Pawn 生命周期文档](../systems/pawn-lifecycle.md)。
 
 ## Runtime Flow 2: Fire, Damage, Death, Respawn
 
@@ -92,19 +92,30 @@ local input
 
 ```text
 Host
-  -> MultiplayerSessionsSubsystem.CreateSession
-  -> create callback
-  -> Menu ServerTravel to Lobby
+  -> Menu submits HostGame to MultiplayerSessionFlowSubsystem
+  -> MultiplayerSessionsSubsystem.CreateSession (one owned OSS operation)
+  -> flow handles create completion and ServerTravel to Lobby?listen
+  -> destination world + local controller ready
+  -> UIManager shows the WBP lobby panel (host invite actions / client waiting state)
   -> host starts game
-  -> enable seamless travel + ServerTravel to gameplay map
+  -> flow enables seamless travel + ServerTravel to gameplay map
 
 Client
-  -> Find / Invite / JoinSession
-  -> resolve connect address
-  -> local PlayerController.ClientTravel(address)
+  -> Steam accepted-invite event
+  -> flow joins directly when disconnected; an active room requires explicit confirmation
+  -> MultiplayerSessionsSubsystem.JoinSession + resolve connect address
+  -> flow calls local PlayerController.ClientTravel(address)
+  -> destination world + actual server-provided PlayerController ready
+
+Leave / failure
+  -> flow serializes session cleanup
+  -> destroy the local named session + return to the local menu (closes gameplay connection)
+  -> Idle, or CleanupFailed with explicit retry if cleanup did not complete
 ```
 
-Session 创建、搜索、加入、邀请和旅行位于 `MultiplayerSession` 插件。核心 ShooterGame Module 不负责在线服务回调；插件也不决定伤害、死亡或比赛 Gameplay 状态。
+`MultiplayerSessionsSubsystem` 拥有 Create / Join / Destroy 与邀请回调；`LobbyInviteSubsystem` 拥有好友刷新和发送邀请；`MultiplayerSessionFlowSubsystem` 拥有本地业务阶段、Travel、退出和失败恢复；`MultiplayerSessionUIManagerSubsystem` 只管理现有 Widget 和输入模式。地图配置集中在 Project Settings 的 Multiplayer Session 设置中，项目值位于 `Config/DefaultGame.ini`。当前没有 Session 搜索入口。详细契约和待验证场景见 [联机流程文档](../systems/multiplayer-session.md)。
+
+核心 ShooterGame Module 不负责在线服务回调；插件也不决定伤害、死亡或比赛 Gameplay 状态。联机菜单、大厅、好友行和邀请确认采用 WBP Designer 布局；C++ Widget 只订阅状态和调用服务。RootWidget 管理 UI layer，UIManager 管理本地输入与旅行时的 UI 清理。
 
 ## System Boundaries
 
@@ -130,7 +141,8 @@ Session 创建、搜索、加入、邀请和旅行位于 `MultiplayerSession` �
 | 死亡到重生消息边界 | `Source/ShooterGame/Public/Messages/ShooterGameplayMessageSubsystem.h` |
 | 重生规则 | `Source/ShooterGame/Public/GameMode/ShooterGameMode.h` |
 | Session / Join / Invite | `Plugins/MultiplayerSession/Source/MultiplayerSession/Public/MultiplayerSessionsSubsystem.h` |
-| Lobby / Gameplay Travel | `Plugins/MultiplayerSession/Source/MultiplayerSession/` |
+| Host / Leave / Invite confirmation / Travel | `Plugins/MultiplayerSession/Source/MultiplayerSession/Public/MultiplayerSessionFlowSubsystem.h` |
+| Multiplayer map configuration | `Plugins/MultiplayerSession/Source/MultiplayerSession/Public/MultiplayerSessionSettings.h` |
 
 ## Current Invariants and Known Limits
 
@@ -140,4 +152,5 @@ Session 创建、搜索、加入、邀请和旅行位于 `MultiplayerSession` �
 - PawnExtension 解绑必须允许从 UnPossess、Controller cleared 和 EndPlay 重复进入。
 - 当前解绑将激活 Ability 统一视为 Pawn-scoped 并取消；未来若存在需要跨 Avatar 保留的 Ability，必须先明确新的保留契约。
 - Inventory 当前使用 OwnerOnly `TArray` 复制，最多一个固定武器条目；不保留多槽位逻辑。
-- Seamless Travel、Listen Server + Client 和 Dedicated Server 不得从静态代码推断为 PASS；具体结果跟随对应 system 文档维护。
+- 2026-10-05，精简后的主机与客户端双人 Gameplay 回归由开发者确认通过，覆盖持枪、双向伤害/击杀、连续重生恢复和无掉落/重复武器表现；验证范围与证据见 [Pawn 生命周期文档](../systems/pawn-lifecycle.md)。
+- 本次测试入口与设备拓扑未说明；Steam 好友跨设备、三人及以上观察、弱网、完整 Seamless Travel 和 Dedicated Server 仍待分别验证，不从静态代码或双人 Gameplay 结果推断通过。

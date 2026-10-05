@@ -1,436 +1,244 @@
 #include "MultiplayerSessionsSubsystem.h"
+
+#include "Engine/LocalPlayer.h"
+#include "Engine/World.h"
+#include "Interfaces/OnlineExternalUIInterface.h"
+#include "Misc/App.h"
 #include "Online.h"
 #include "Online/OnlineSessionNames.h"
 #include "OnlineSubsystem.h"
-#include "OnlineSessionSettings.h"
 #include "OnlineSubsystemUtils.h"
-#include "GameFramework/PlayerController.h"
-#include "Interfaces/OnlineExternalUIInterface.h"
-#include "Misc/App.h"
-#include "TimerManager.h"
-#include "UObject/UObjectGlobals.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogMultiplayerSessions, Log, All);
-
-namespace MultiplayerSessionMetadataKeys
-{
-	const FName SessionProject(TEXT("SessionProject"));
-	const FName SessionBuildId(TEXT("SessionBuildId"));
-}
-
-UMultiplayerSessionsSubsystem::UMultiplayerSessionsSubsystem() :   
-	CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(this, &ThisClass::OnCreateSessionComplete)),
-	JoinSessionCompleteDelegate(FOnJoinSessionCompleteDelegate::CreateUObject(this, &ThisClass::OnJoinSessionComplete)),
-	DestroySessionCompleteDelegate(FOnDestroySessionCompleteDelegate::CreateUObject(this, &ThisClass::OnDestroySessionComplete)),
-	SessionUserInviteAcceptedDelegate(FOnSessionUserInviteAcceptedDelegate::CreateUObject(this, &ThisClass::OnSessionUserInviteAccepted))
-{
-}
 
 void UMultiplayerSessionsSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-
-	PostLoadMapWithWorldDelegateHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(
-		this,
-		&ThisClass::OnPostLoadMapWithWorld);
+	bDeinitializing = false;
 	RefreshOnlineSessionInterface();
 }
 
 void UMultiplayerSessionsSubsystem::Deinitialize()
 {
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearAllTimersForObject(this);
-	}
-
-	if (PostLoadMapWithWorldDelegateHandle.IsValid())
-	{
-		FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadMapWithWorldDelegateHandle);
-		PostLoadMapWithWorldDelegateHandle.Reset();
-	}
-
+	bDeinitializing = true;
+	ClearActiveOperation();
 	ClearSessionInviteAcceptedDelegate();
-
+	OnlineSessionInterface.Reset();
 	Super::Deinitialize();
 }
 
-void UMultiplayerSessionsSubsystem::CreateSession(int32 NumPublicConnections, FString MatchType)
-{
-	DesiredSessionConfig.NumPublicConnections = NumPublicConnections;
-	DesiredSessionConfig.MatchType = MatchType;
-	
-	if (!RefreshOnlineSessionInterface())
-	{
-		MultiplayerOnCreateSessionCompleteDelegate.Broadcast(false);
-		return;
-	}
-	
-	auto ExistingSession = OnlineSessionInterface->GetNamedSession(NAME_GameSession);
-	if (ExistingSession != nullptr)
-	{
-		// The Steam OSS only allows one named game session, so recreate after destroy completes.
-		PendingRecreateConfig = DesiredSessionConfig;
-		DestroySession();
-		return;
-	}
-	
-	CreateSessionInternal(DesiredSessionConfig);
-}
-
-void UMultiplayerSessionsSubsystem::JoinSession(const FOnlineSessionSearchResult& SessionResult)
-{
-	if (!RefreshOnlineSessionInterface())
-	{
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("Cannot join session: online session interface is unavailable."));
-		MultiplayerOnJoinSessionCompleteDelegate.Broadcast(EOnJoinSessionCompleteResult::UnknownError, FString());
-		return;
-	}
-	
-	JoinSessionCompleteDelegateHandle = OnlineSessionInterface->AddOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegate);
-
-	const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
-	if (!LocalPlayer || !LocalPlayer->GetPreferredUniqueNetId().IsValid())
-	{
-		OnlineSessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegateHandle);
-		JoinSessionCompleteDelegateHandle.Reset();
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("Cannot join session: local player id is invalid."));
-		MultiplayerOnJoinSessionCompleteDelegate.Broadcast(EOnJoinSessionCompleteResult::UnknownError, FString());
-		return;
-	}
-
-	const FString SessionIdString = SessionResult.GetSessionIdStr();
-	UE_LOG(
-		LogMultiplayerSessions,
-		Log,
-		TEXT("Joining session. Owner=%s SessionId=%s UsesLobby=%d HasSessionInfo=%d"),
-		*SessionResult.Session.OwningUserName,
-		SessionIdString.IsEmpty() ? TEXT("None") : *SessionIdString,
-		SessionResult.Session.SessionSettings.bUseLobbiesIfAvailable,
-		SessionResult.Session.SessionInfo.IsValid());
-
-	const bool bJoinStarted = OnlineSessionInterface->JoinSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, SessionResult);
-	
-	if (!bJoinStarted)
-	{
-		OnlineSessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegateHandle);
-		JoinSessionCompleteDelegateHandle.Reset();
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("JoinSession did not start."));
-		MultiplayerOnJoinSessionCompleteDelegate.Broadcast(EOnJoinSessionCompleteResult::UnknownError, FString());
-	}
-}
-
-void UMultiplayerSessionsSubsystem::DestroySession()
-{
-	if (!RefreshOnlineSessionInterface())
-	{
-		OnDestroySessionComplete(NAME_GameSession, false);
-		return;
-	}
-
-	if (OnlineSessionInterface->GetNamedSession(NAME_GameSession) == nullptr)
-	{
-		OnDestroySessionComplete(NAME_GameSession, true);
-		return;
-	}
-	
-	DestroySessionCompleteDelegateHandle = OnlineSessionInterface->AddOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegate);
-	
-	bool bDestroysuccessful = OnlineSessionInterface->DestroySession(NAME_GameSession);
-	if (!bDestroysuccessful)
-	{
-		OnlineSessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
-		DestroySessionCompleteDelegateHandle.Reset();
-		OnDestroySessionComplete(NAME_GameSession, false);
-	}
-}
-
-bool UMultiplayerSessionsSubsystem::ShowSteamInviteUI()
-{
-	if (!RefreshOnlineSessionInterface())
-	{
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("Cannot show invite UI: online session interface is unavailable."));
-		return false;
-	}
-
-	const FNamedOnlineSession* CurrentSession = OnlineSessionInterface->GetNamedSession(NAME_GameSession);
-	if (CurrentSession == nullptr || !CurrentSession->SessionInfo.IsValid())
-	{
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("Cannot show invite UI: no valid game session exists."));
-		return false;
-	}
-
-	IOnlineExternalUIPtr ExternalUI = Online::GetExternalUIInterface(GetWorld());
-	if (!ExternalUI.IsValid())
-	{
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("Cannot show invite UI: external UI interface is unavailable."));
-		return false;
-	}
-
-	const bool bOpened = ExternalUI->ShowInviteUI(0, NAME_GameSession);
-	if (!bOpened)
-	{
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("Steam invite UI failed to open."));
-	}
-
-	return bOpened;
-}
-
-bool UMultiplayerSessionsSubsystem::CanShowHostInvitePanel() const
+bool UMultiplayerSessionsSubsystem::CreateSession(int32 NumPublicConnections, const FString& MatchType)
 {
 	UWorld* World = GetWorld();
-	if (!World || World->GetNetMode() == NM_Client || World->GetNetMode() == NM_DedicatedServer)
+	const ULocalPlayer* LocalPlayer = World ? World->GetFirstLocalPlayerFromController() : nullptr;
+	if (!LocalPlayer || !LocalPlayer->GetPreferredUniqueNetId().IsValid() || NumPublicConnections < 1)
+	{
+		return false;
+	}
+	const FUniqueNetIdRepl LocalUserId = LocalPlayer->GetPreferredUniqueNetId();
+	if (!RefreshOnlineSessionInterface() || HasSession())
+	{
+		return false;
+	}
+	const uint64 OperationId = BeginOperation(EOperation::Create);
+	if (OperationId == 0)
 	{
 		return false;
 	}
 
-	const IOnlineSessionPtr SessionInterface = Online::GetSessionInterface(World);
-	return SessionInterface.IsValid() && SessionInterface->GetNamedSession(NAME_GameSession) != nullptr;
+	FOnlineSessionSettings Settings;
+	const IOnlineSubsystem* Subsystem = Online::GetSubsystem(World);
+	Settings.bIsLANMatch = Subsystem && Subsystem->GetSubsystemName() == FName(TEXT("NULL"));
+	Settings.NumPublicConnections = NumPublicConnections;
+	Settings.bAllowJoinInProgress = true;
+	Settings.bAllowJoinViaPresence = true;
+	Settings.bShouldAdvertise = true;
+	Settings.bUsesPresence = true;
+	Settings.bUseLobbiesIfAvailable = true;
+	Settings.bAllowInvites = true;
+	Settings.BuildUniqueId = GetBuildUniqueId();
+	Settings.Set(FName(TEXT("SessionProject")), FString(FApp::GetProjectName()), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	Settings.Set(FName(TEXT("SessionBuildId")), GetBuildUniqueId(), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	Settings.Set(FName(TEXT("MatchType")), MatchType, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+
+	const IOnlineSessionPtr SessionInterface = OperationSessionInterface;
+	OperationDelegateHandle = SessionInterface->AddOnCreateSessionCompleteDelegate_Handle(
+		FOnCreateSessionCompleteDelegate::CreateUObject(this, &ThisClass::OnCreateSessionComplete, OperationId));
+	const bool bStarted = SessionInterface->CreateSession(*LocalUserId, NAME_GameSession, Settings);
+	// Steam can invoke completion synchronously and then return false.
+	if (!bStarted && OwnsOperation(EOperation::Create, OperationId))
+	{
+		OnCreateSessionComplete(NAME_GameSession, false, OperationId);
+	}
+	return true;
 }
 
-void UMultiplayerSessionsSubsystem::ShowLobbyInvitePanel()
+bool UMultiplayerSessionsSubsystem::JoinSession(const FOnlineSessionSearchResult& SessionResult)
 {
-	if (!CanShowHostInvitePanel())
+	UWorld* World = GetWorld();
+	const ULocalPlayer* LocalPlayer = World ? World->GetFirstLocalPlayerFromController() : nullptr;
+	if (!SessionResult.IsValid() || !LocalPlayer || !LocalPlayer->GetPreferredUniqueNetId().IsValid())
 	{
-		UE_LOG(LogMultiplayerSessions, Verbose, TEXT("Skipping lobby invite panel: local player is not the host or no session exists."));
+		return false;
+	}
+	const FUniqueNetIdRepl LocalUserId = LocalPlayer->GetPreferredUniqueNetId();
+	if (!RefreshOnlineSessionInterface() || HasSession())
+	{
+		return false;
+	}
+	const uint64 OperationId = BeginOperation(EOperation::Join);
+	if (OperationId == 0)
+	{
+		return false;
+	}
+
+	const IOnlineSessionPtr SessionInterface = OperationSessionInterface;
+	OperationDelegateHandle = SessionInterface->AddOnJoinSessionCompleteDelegate_Handle(
+		FOnJoinSessionCompleteDelegate::CreateUObject(this, &ThisClass::OnJoinSessionComplete, OperationId));
+	const bool bStarted = SessionInterface->JoinSession(*LocalUserId, NAME_GameSession, SessionResult);
+	if (!bStarted && OwnsOperation(EOperation::Join, OperationId))
+	{
+		OnJoinSessionComplete(NAME_GameSession, EOnJoinSessionCompleteResult::UnknownError, OperationId);
+	}
+	return true;
+}
+
+bool UMultiplayerSessionsSubsystem::DestroySession()
+{
+	const uint64 OperationId = BeginOperation(EOperation::Destroy);
+	if (OperationId == 0)
+	{
+		return false;
+	}
+	const IOnlineSessionPtr SessionInterface = OperationSessionInterface;
+	if (!SessionInterface->GetNamedSession(NAME_GameSession))
+	{
+		OnDestroySessionComplete(NAME_GameSession, true, OperationId);
+		return true;
+	}
+
+	OperationDelegateHandle = SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
+		FOnDestroySessionCompleteDelegate::CreateUObject(this, &ThisClass::OnDestroySessionComplete, OperationId));
+	const bool bStarted = SessionInterface->DestroySession(NAME_GameSession);
+	if (!bStarted && OwnsOperation(EOperation::Destroy, OperationId))
+	{
+		OnDestroySessionComplete(NAME_GameSession, false, OperationId);
+	}
+	return true;
+}
+
+uint64 UMultiplayerSessionsSubsystem::BeginOperation(EOperation Operation)
+{
+	if (bDeinitializing || IsBusy() || !RefreshOnlineSessionInterface())
+	{
+		return 0;
+	}
+	ActiveOperation = Operation;
+	ActiveOperationId = ++NextOperationId;
+	OperationSessionInterface = OnlineSessionInterface;
+	return ActiveOperationId;
+}
+
+bool UMultiplayerSessionsSubsystem::OwnsOperation(EOperation Operation, uint64 OperationId) const
+{
+	return !bDeinitializing && ActiveOperation == Operation && ActiveOperationId == OperationId;
+}
+
+void UMultiplayerSessionsSubsystem::ClearActiveOperation()
+{
+	if (OperationSessionInterface.IsValid() && OperationDelegateHandle.IsValid())
+	{
+		switch (ActiveOperation)
+		{
+		case EOperation::Create:
+			OperationSessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(OperationDelegateHandle);
+			break;
+		case EOperation::Join:
+			OperationSessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(OperationDelegateHandle);
+			break;
+		case EOperation::Destroy:
+			OperationSessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(OperationDelegateHandle);
+			break;
+		default:
+			break;
+		}
+	}
+	OperationDelegateHandle.Reset();
+	OperationSessionInterface.Reset();
+	ActiveOperation = EOperation::None;
+	ActiveOperationId = 0;
+}
+
+void UMultiplayerSessionsSubsystem::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful, uint64 OperationId)
+{
+	if (SessionName != NAME_GameSession || !OwnsOperation(EOperation::Create, OperationId))
+	{
 		return;
 	}
-
-	OnLobbyInvitePanelRequested.Broadcast();
-}
-
-void UMultiplayerSessionsSubsystem::RequestShowLobbyInvitePanelAfterTravel()
-{
-	bShowLobbyInvitePanelAfterTravel = true;
-}
-
-
-/*
- * Callbacks function
- */
-
-void UMultiplayerSessionsSubsystem::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
-{
-	if (OnlineSessionInterface)
-	{
-		OnlineSessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegateHandle);
-		CreateSessionCompleteDelegateHandle.Reset();
-	}
-	
+	ClearActiveOperation();
 	MultiplayerOnCreateSessionCompleteDelegate.Broadcast(bWasSuccessful);
 }
 
-void UMultiplayerSessionsSubsystem::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result)
+void UMultiplayerSessionsSubsystem::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result, uint64 OperationId)
 {
-	if (OnlineSessionInterface)
+	if (SessionName != NAME_GameSession || !OwnsOperation(EOperation::Join, OperationId))
 	{
-		OnlineSessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegateHandle);
-		JoinSessionCompleteDelegateHandle.Reset();
+		return;
 	}
-
-	FString ConnectAddress;
-	EOnJoinSessionCompleteResult::Type BroadcastResult = Result;
-	if (Result == EOnJoinSessionCompleteResult::Success && OnlineSessionInterface.IsValid())
+	FString Address;
+	if (Result == EOnJoinSessionCompleteResult::Success
+		&& (!OperationSessionInterface->GetResolvedConnectString(SessionName, Address) || Address.IsEmpty()))
 	{
-		// Resolve the final travel address inside the session layer so UI code stays OSS-agnostic.
-		const bool bHasConnectString = OnlineSessionInterface->GetResolvedConnectString(SessionName, ConnectAddress);
-		if (!bHasConnectString)
-		{
-			BroadcastResult = EOnJoinSessionCompleteResult::UnknownError;
-			UE_LOG(LogMultiplayerSessions, Warning, TEXT("Join session succeeded but no connect string was resolved."));
-		}
+		Result = EOnJoinSessionCompleteResult::CouldNotRetrieveAddress;
 	}
-
-	UE_LOG(
-		LogMultiplayerSessions,
-		Log,
-		TEXT("Join session complete. Session=%s Result=%d Address=%s"),
-		*SessionName.ToString(),
-		static_cast<int32>(BroadcastResult),
-		ConnectAddress.IsEmpty() ? TEXT("None") : *ConnectAddress);
-
-	MultiplayerOnJoinSessionCompleteDelegate.Broadcast(BroadcastResult, ConnectAddress);
-
-	if (BroadcastResult == EOnJoinSessionCompleteResult::Success && !ConnectAddress.IsEmpty())
-	{
-		TravelToJoinedSession(ConnectAddress);
-	}
+	ClearActiveOperation();
+	MultiplayerOnJoinSessionCompleteDelegate.Broadcast(Result, Address);
 }
 
-void UMultiplayerSessionsSubsystem::OnDestroySessionComplete(FName SessionName, bool bWasSuccessful)
+void UMultiplayerSessionsSubsystem::OnDestroySessionComplete(FName SessionName, bool bWasSuccessful, uint64 OperationId)
 {
-	if (DestroySessionCompleteDelegateHandle.IsValid())
+	if (SessionName != NAME_GameSession || !OwnsOperation(EOperation::Destroy, OperationId))
 	{
-		if (OnlineSessionInterface)
-		{
-			OnlineSessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
-		}
-		DestroySessionCompleteDelegateHandle.Reset();
-	}
-
-	if (bJoinInviteAfterDestroy)
-	{
-		const FOnlineSessionSearchResult InviteResult = PendingInviteSessionResult;
-		PendingInviteSessionResult = FOnlineSessionSearchResult();
-		bJoinInviteAfterDestroy = false;
-
-		if (bWasSuccessful && InviteResult.IsValid())
-		{
-			JoinSession(InviteResult);
-		}
-		else
-		{
-			UE_LOG(LogMultiplayerSessions, Warning, TEXT("Failed to destroy existing session before joining Steam invite."));
-			MultiplayerOnJoinSessionCompleteDelegate.Broadcast(EOnJoinSessionCompleteResult::UnknownError, FString());
-		}
-
-		MultiplayerOnDestroySessionCompleteDelegate.Broadcast(bWasSuccessful);
 		return;
 	}
-	
-	if (PendingRecreateConfig.IsSet())
-	{
-		const FSessionConfig CreateSessionConfig = PendingRecreateConfig.GetValue();
-		PendingRecreateConfig.Reset();
-
-		if (bWasSuccessful)
-		{
-			CreateSession(CreateSessionConfig.NumPublicConnections, CreateSessionConfig.MatchType);
-		}
-		else
-		{
-			MultiplayerOnCreateSessionCompleteDelegate.Broadcast(false);
-		}
-
-		MultiplayerOnDestroySessionCompleteDelegate.Broadcast(bWasSuccessful);
-		return;
-	}
-
+	// Verify the backend removed the local entry before admitting another create or join.
+	bWasSuccessful = bWasSuccessful && OperationSessionInterface->GetNamedSession(NAME_GameSession) == nullptr;
+	ClearActiveOperation();
 	MultiplayerOnDestroySessionCompleteDelegate.Broadcast(bWasSuccessful);
 }
 
-void UMultiplayerSessionsSubsystem::OnSessionUserInviteAccepted(
-	bool bWasSuccessful,
-	int32 ControllerId,
-	FUniqueNetIdPtr /*UserId*/,
-	const FOnlineSessionSearchResult& InviteResult)
+bool UMultiplayerSessionsSubsystem::HasSession() const
 {
-	UE_LOG(
-		LogMultiplayerSessions,
-		Log,
-		TEXT("Steam session invite accepted. ControllerId=%d Success=%d"),
-		ControllerId,
-		bWasSuccessful);
-
-	if (!bWasSuccessful || !InviteResult.IsValid())
-	{
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("Steam invite accepted without a valid session result."));
-		MultiplayerOnJoinSessionCompleteDelegate.Broadcast(EOnJoinSessionCompleteResult::UnknownError, FString());
-		return;
-	}
-
-	JoinAcceptedInvite(InviteResult);
-}
-
-/*
- * private function
- */
-void UMultiplayerSessionsSubsystem::CreateSessionInternal(const FSessionConfig& SessionConfig)
-{
-	CreateSessionCompleteDelegateHandle = OnlineSessionInterface->AddOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate);
-	
-	SessionSettings = MakeShareable(new FOnlineSessionSettings());
-	SessionSettings->bIsLANMatch = IsUsingNullSubsystem();
-	SessionSettings->NumPublicConnections = SessionConfig.NumPublicConnections;
-	SessionSettings->bAllowJoinInProgress = true;
-	SessionSettings->bAllowJoinViaPresence = true;
-	SessionSettings->bShouldAdvertise = true;
-	SessionSettings->bUsesPresence = true;
-	SessionSettings->bUseLobbiesIfAvailable = true;
-	SessionSettings->bAllowInvites = true;
-	SessionSettings->BuildUniqueId = GetBuildUniqueId();
-	SessionSettings->Set(
-		MultiplayerSessionMetadataKeys::SessionProject,
-		FString(FApp::GetProjectName()),
-		EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
-	);
-	SessionSettings->Set(
-		MultiplayerSessionMetadataKeys::SessionBuildId,
-		GetBuildUniqueId(),
-		EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
-	);
-	SessionSettings->Set(
-		FName("MatchType"),
-		SessionConfig.MatchType,
-		EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
-	);
-	
-	const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
-	if (!LocalPlayer || !LocalPlayer->GetPreferredUniqueNetId().IsValid())
-	{
-		OnlineSessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegateHandle);
-		CreateSessionCompleteDelegateHandle.Reset();
-		MultiplayerOnCreateSessionCompleteDelegate.Broadcast(false);
-		return;
-	}
-	
-	const bool bCreateStart = OnlineSessionInterface->CreateSession(
-		*LocalPlayer->GetPreferredUniqueNetId(),NAME_GameSession,*SessionSettings);
-
-	if (!bCreateStart)
-	{
-		OnlineSessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegateHandle);
-		CreateSessionCompleteDelegateHandle.Reset();
-		MultiplayerOnCreateSessionCompleteDelegate.Broadcast(false);
-	}
+	return OnlineSessionInterface.IsValid() && OnlineSessionInterface->GetNamedSession(NAME_GameSession) != nullptr;
 }
 
 bool UMultiplayerSessionsSubsystem::RefreshOnlineSessionInterface()
 {
-	OnlineSessionInterface = Online::GetSessionInterface(GetWorld());
-	if (OnlineSessionInterface.IsValid())
+	if (bDeinitializing)
 	{
-		BindSessionInviteAcceptedDelegate();
-		return true;
+		return false;
 	}
-	
-	return false;
-}
-
-FName UMultiplayerSessionsSubsystem::GetCurrentSubsystemName() const
-{
-	if (const IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(GetWorld()))
+	// Keep the known interface during world replacement so pending cleanup retains its owner.
+	if (UWorld* World = GetWorld())
 	{
-		return OnlineSubsystem->GetSubsystemName();
+		const IOnlineSessionPtr CurrentInterface = Online::GetSessionInterface(World);
+		if (CurrentInterface.IsValid())
+		{
+			OnlineSessionInterface = CurrentInterface;
+		}
 	}
-
-	return NAME_None;
-}
-
-bool UMultiplayerSessionsSubsystem::IsUsingNullSubsystem() const
-{
-	return GetCurrentSubsystemName() == FName(TEXT("NULL"));
-}
-
-void UMultiplayerSessionsSubsystem::BindSessionInviteAcceptedDelegate()
-{
 	if (!OnlineSessionInterface.IsValid())
 	{
-		return;
+		return false;
 	}
-
-	if (SessionUserInviteAcceptedDelegateHandle.IsValid())
+	if (SessionInterfaceWithInviteDelegate != OnlineSessionInterface)
 	{
-		if (SessionInterfaceWithInviteDelegate == OnlineSessionInterface)
-		{
-			return;
-		}
-
 		ClearSessionInviteAcceptedDelegate();
+		SessionInterfaceWithInviteDelegate = OnlineSessionInterface;
+		SessionUserInviteAcceptedDelegateHandle = OnlineSessionInterface->AddOnSessionUserInviteAcceptedDelegate_Handle(
+			FOnSessionUserInviteAcceptedDelegate::CreateUObject(this, &ThisClass::OnSessionUserInviteAccepted));
 	}
-
-	SessionInterfaceWithInviteDelegate = OnlineSessionInterface;
-	SessionUserInviteAcceptedDelegateHandle =
-		OnlineSessionInterface->AddOnSessionUserInviteAcceptedDelegate_Handle(SessionUserInviteAcceptedDelegate);
+	return true;
 }
 
 void UMultiplayerSessionsSubsystem::ClearSessionInviteAcceptedDelegate()
@@ -439,64 +247,38 @@ void UMultiplayerSessionsSubsystem::ClearSessionInviteAcceptedDelegate()
 	{
 		SessionInterfaceWithInviteDelegate->ClearOnSessionUserInviteAcceptedDelegate_Handle(SessionUserInviteAcceptedDelegateHandle);
 	}
-
 	SessionUserInviteAcceptedDelegateHandle.Reset();
 	SessionInterfaceWithInviteDelegate.Reset();
 }
 
-void UMultiplayerSessionsSubsystem::JoinAcceptedInvite(const FOnlineSessionSearchResult& InviteResult)
+void UMultiplayerSessionsSubsystem::OnSessionUserInviteAccepted(bool bWasSuccessful, int32 ControllerId,
+	FUniqueNetIdPtr UserId, const FOnlineSessionSearchResult& InviteResult)
 {
-	PendingRecreateConfig.Reset();
-
-	if (!RefreshOnlineSessionInterface())
+	if (bDeinitializing)
 	{
-		MultiplayerOnJoinSessionCompleteDelegate.Broadcast(EOnJoinSessionCompleteResult::UnknownError, FString());
 		return;
 	}
-
-	if (OnlineSessionInterface->GetNamedSession(NAME_GameSession) != nullptr)
+	const ULocalPlayer* LocalPlayer = GetWorld() ? GetWorld()->GetFirstLocalPlayerFromController() : nullptr;
+	if (!LocalPlayer || (UserId.IsValid() && LocalPlayer->GetPreferredUniqueNetId().IsValid()
+		&& *UserId != *LocalPlayer->GetPreferredUniqueNetId()))
 	{
-		PendingInviteSessionResult = InviteResult;
-		bJoinInviteAfterDestroy = true;
-		DestroySession();
 		return;
 	}
-
-	JoinSession(InviteResult);
+	UE_LOG(LogMultiplayerSessions, Log, TEXT("Session invite accepted: controller=%d success=%d"), ControllerId, bWasSuccessful);
+	OnInviteAccepted.Broadcast(bWasSuccessful && InviteResult.IsValid(), InviteResult);
 }
 
-void UMultiplayerSessionsSubsystem::TravelToJoinedSession(const FString& ConnectAddress) const
+bool UMultiplayerSessionsSubsystem::ShowSteamInviteUI()
 {
-	UWorld* World = GetWorld();
-	if (!World)
+	if (IsBusy() || !RefreshOnlineSessionInterface() || !GetWorld())
 	{
-		return;
+		return false;
 	}
-
-	APlayerController* PlayerController = World->GetFirstPlayerController();
-	if (!PlayerController)
+	const FNamedOnlineSession* Session = OnlineSessionInterface->GetNamedSession(NAME_GameSession);
+	if (!Session || !Session->SessionInfo.IsValid())
 	{
-		UE_LOG(LogMultiplayerSessions, Warning, TEXT("Cannot travel to joined session: no local player controller."));
-		return;
+		return false;
 	}
-
-	UE_LOG(LogMultiplayerSessions, Log, TEXT("ClientTravel to joined session: %s"), *ConnectAddress);
-	PlayerController->ClientTravel(ConnectAddress, ETravelType::TRAVEL_Absolute);
-}
-
-void UMultiplayerSessionsSubsystem::OnPostLoadMapWithWorld(UWorld* LoadedWorld)
-{
-	if (!bShowLobbyInvitePanelAfterTravel || LoadedWorld == nullptr || LoadedWorld->GetGameInstance() != GetGameInstance())
-	{
-		return;
-	}
-
-	bShowLobbyInvitePanelAfterTravel = false;
-	LoadedWorld->GetTimerManager().SetTimerForNextTick(
-		FTimerDelegate::CreateUObject(this, &ThisClass::TryShowPendingLobbyInvitePanel));
-}
-
-void UMultiplayerSessionsSubsystem::TryShowPendingLobbyInvitePanel()
-{
-	ShowLobbyInvitePanel();
+	const IOnlineExternalUIPtr ExternalUI = Online::GetExternalUIInterface(GetWorld());
+	return ExternalUI.IsValid() && ExternalUI->ShowInviteUI(0, NAME_GameSession);
 }

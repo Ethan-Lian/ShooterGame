@@ -2,24 +2,23 @@
 
 #include "Blueprint/UserWidget.h"
 #include "GameFramework/PlayerController.h"
-#include "GameFramework/GameModeBase.h"
 #include "LobbyInvitePanelWidget.h"
 #include "Menu.h"
 #include "MultiplayerSessionRootWidget.h"
-#include "MultiplayerSessionsSubsystem.h"
+#include "MultiplayerSessionSettings.h"
+#include "MultiplayerInviteConfirmationWidget.h"
+#include "Engine/GameInstance.h"
 #include "Subsystems/SubsystemCollection.h"
+#include "UObject/UObjectGlobals.h"
 
 void UMultiplayerSessionUIManagerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
-	MultiplayerSessionsSubsystem = Collection.InitializeDependency<UMultiplayerSessionsSubsystem>();
-	if (MultiplayerSessionsSubsystem)
-	{
-		MultiplayerSessionsSubsystem->OnLobbyInvitePanelRequested.AddUniqueDynamic(
-			this,
-			&ThisClass::HandleLobbyInvitePanelRequested);
-	}
+	SessionFlow = Collection.InitializeDependency<UMultiplayerSessionFlowSubsystem>();
+	SessionFlow->OnStateChanged.AddUniqueDynamic(this, &ThisClass::HandleFlowStateChanged);
+	SessionFlow->OnInviteConfirmationRequested.AddUniqueDynamic(this, &ThisClass::HandleInviteConfirmationRequested);
+	PostLoadMapHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &ThisClass::HandlePostLoadMap);
 }
 
 void UMultiplayerSessionUIManagerSubsystem::Deinitialize()
@@ -28,19 +27,20 @@ void UMultiplayerSessionUIManagerSubsystem::Deinitialize()
 	ClearMenuWidget();
 	ClearRootWidget();
 
-	if (MultiplayerSessionsSubsystem)
+	FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadMapHandle);
+	if (SessionFlow)
 	{
-		MultiplayerSessionsSubsystem->OnLobbyInvitePanelRequested.RemoveDynamic(
-			this,
-			&ThisClass::HandleLobbyInvitePanelRequested);
+		SessionFlow->OnStateChanged.RemoveDynamic(this, &ThisClass::HandleFlowStateChanged);
+		SessionFlow->OnInviteConfirmationRequested.RemoveDynamic(this, &ThisClass::HandleInviteConfirmationRequested);
 	}
+	SessionFlow = nullptr;
 
 	Super::Deinitialize();
 }
 
 void UMultiplayerSessionUIManagerSubsystem::ShowLobbyInvitePanel()
 {
-	if (!ResolveMultiplayerSessionsSubsystem() || !MultiplayerSessionsSubsystem->CanShowHostInvitePanel())
+	if (!SessionFlow || (SessionFlow->GetState() != EMultiplayerSessionFlowState::Lobby && !SessionFlow->CanInviteFriends()))
 	{
 		return;
 	}
@@ -66,18 +66,11 @@ void UMultiplayerSessionUIManagerSubsystem::ShowLobbyInvitePanel()
 	{
 		LobbyInvitePanelWidget = CreateWidget<ULobbyInvitePanelWidget>(
 			PlayerController,
-			ULobbyInvitePanelWidget::StaticClass());
+			GetDefault<UMultiplayerSessionSettings>()->LobbyPanelClass.LoadSynchronous());
 		if (!LobbyInvitePanelWidget)
 		{
 			return;
 		}
-
-		LobbyInvitePanelWidget->OnCloseRequested.AddUniqueDynamic(
-			this,
-			&ThisClass::HandleLobbyInvitePanelCloseRequested);
-		LobbyInvitePanelWidget->OnStartRequested.AddUniqueDynamic(
-			this,
-			&ThisClass::HandleLobbyInvitePanelStartRequested);
 	}
 
 	Root->AddWidgetToLayer(LobbyInvitePanelWidget, 100);
@@ -159,59 +152,88 @@ void UMultiplayerSessionUIManagerSubsystem::HideMenu(UMenu* InMenuWidget)
 	}
 }
 
-void UMultiplayerSessionUIManagerSubsystem::HandleLobbyInvitePanelRequested()
+void UMultiplayerSessionUIManagerSubsystem::HandleFlowStateChanged(EMultiplayerSessionFlowState State, FText Error)
 {
-	ShowLobbyInvitePanel();
+	if (MenuWidget)
+	{
+		MenuWidget->SetIsEnabled(!SessionFlow->IsBusy());
+	}
+	if (InviteConfirmationWidget && (!SessionFlow->HasPendingInvite() || SessionFlow->IsBusy()))
+	{
+		ClearInviteConfirmation();
+		RestoreVisibleWidgetInputMode();
+	}
+	if (State == EMultiplayerSessionFlowState::Lobby)
+	{
+		ShowLobbyInvitePanel();
+	}
+	else if (State == EMultiplayerSessionFlowState::InGame)
+	{
+		HideLobbyInvitePanel();
+	}
 }
 
-void UMultiplayerSessionUIManagerSubsystem::HandleLobbyInvitePanelCloseRequested()
+void UMultiplayerSessionUIManagerSubsystem::HandlePostLoadMap(UWorld* LoadedWorld)
 {
-	HideLobbyInvitePanel();
+	if (LoadedWorld && LoadedWorld->GetGameInstance() == GetGameInstance() && RootWidget
+		&& !DoesWidgetBelongToPlayer(RootWidget, GetLocalPlayerController()))
+	{
+		ClearRootWidget();
+	}
 }
 
-void UMultiplayerSessionUIManagerSubsystem::HandleLobbyInvitePanelStartRequested()
+void UMultiplayerSessionUIManagerSubsystem::HandleInviteConfirmationRequested(FString HostName)
 {
-	StartHostedGame();
+	APlayerController* PlayerController = GetLocalPlayerController();
+	UMultiplayerSessionRootWidget* Root = GetOrCreateRootWidget(PlayerController);
+	if (!Root)
+	{
+		return;
+	}
+	ClearInviteConfirmation();
+	InviteConfirmationWidget = CreateWidget<UMultiplayerInviteConfirmationWidget>(PlayerController,
+		GetDefault<UMultiplayerSessionSettings>()->InviteConfirmationClass.LoadSynchronous());
+	if (!InviteConfirmationWidget)
+	{
+		return;
+	}
+	InviteConfirmationWidget->SetInvitingHost(HostName);
+	Root->AddWidgetToLayer(InviteConfirmationWidget, 200);
+	FInputModeUIOnly InputMode;
+	InputMode.SetWidgetToFocus(InviteConfirmationWidget->TakeWidget());
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	PlayerController->SetInputMode(InputMode);
+	PlayerController->SetShowMouseCursor(true);
+}
+
+void UMultiplayerSessionUIManagerSubsystem::ClearInviteConfirmation()
+{
+	if (InviteConfirmationWidget)
+	{
+		InviteConfirmationWidget->RemoveFromParent();
+		InviteConfirmationWidget = nullptr;
+	}
+}
+
+void UMultiplayerSessionUIManagerSubsystem::RestoreVisibleWidgetInputMode()
+{
+	if (MenuWidget)
+	{
+		ApplyMenuInputMode(MenuWidget);
+	}
+	else if (LobbyInvitePanelWidget)
+	{
+		ApplyLobbyInviteInputMode();
+	}
+	else
+	{
+		RestoreGameInputMode();
+	}
 }
 
 bool UMultiplayerSessionUIManagerSubsystem::StartHostedGame()
 {
-	UWorld* World = GetWorld();
-	if (!World || World->GetNetMode() == NM_Client || World->GetNetMode() == NM_DedicatedServer)
-	{
-		return false;
-	}
-
-	if (!GetLocalPlayerController())
-	{
-		return false;
-	}
-
-	HideLobbyInvitePanel();
-
-	if (AGameModeBase* GameMode = World->GetAuthGameMode())
-	{
-		GameMode->bUseSeamlessTravel = true;
-	}
-
-	return World->ServerTravel(GameplayMapPath);
-}
-
-bool UMultiplayerSessionUIManagerSubsystem::ResolveMultiplayerSessionsSubsystem()
-{
-	if (MultiplayerSessionsSubsystem)
-	{
-		return true;
-	}
-
-	UGameInstance* GameInstance = GetGameInstance();
-	if (!GameInstance)
-	{
-		return false;
-	}
-
-	MultiplayerSessionsSubsystem = GameInstance->GetSubsystem<UMultiplayerSessionsSubsystem>();
-	return MultiplayerSessionsSubsystem != nullptr;
+	return SessionFlow && SessionFlow->StartHostedGame();
 }
 
 bool UMultiplayerSessionUIManagerSubsystem::IsUsableLocalPlayerController(const APlayerController* PlayerController) const
@@ -229,6 +251,11 @@ bool UMultiplayerSessionUIManagerSubsystem::DoesWidgetBelongToPlayer(
 	const UUserWidget* Widget,
 	const APlayerController* PlayerController) const
 {
+	// UserWidget's LocalPlayer context follows travel; its getters cannot identify the world it was created for.
+	if (Widget == RootWidget && (RootOwnerWorld.Get() != GetWorld() || RootOwnerController.Get() != PlayerController))
+	{
+		return false;
+	}
 	return Widget && IsUsableLocalPlayerController(PlayerController) && Widget->GetOwningPlayer() == PlayerController
 		&& Widget->GetWorld() == PlayerController->GetWorld();
 }
@@ -241,7 +268,7 @@ APlayerController* UMultiplayerSessionUIManagerSubsystem::GetLocalPlayerControll
 		return nullptr;
 	}
 
-	APlayerController* PlayerController = World->GetFirstPlayerController();
+	APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController(GetWorld());
 	return IsUsableLocalPlayerController(PlayerController) ? PlayerController : nullptr;
 }
 
@@ -259,6 +286,8 @@ UMultiplayerSessionRootWidget* UMultiplayerSessionUIManagerSubsystem::GetOrCreat
 
 	if (!RootWidget)
 	{
+		RootOwnerWorld = PlayerController->GetWorld();
+		RootOwnerController = PlayerController;
 		RootWidget = CreateWidget<UMultiplayerSessionRootWidget>(
 			PlayerController,
 			UMultiplayerSessionRootWidget::StaticClass());
@@ -288,12 +317,6 @@ void UMultiplayerSessionUIManagerSubsystem::ClearLobbyInvitePanelWidget()
 		LobbyInvitePanelWidget->RemoveFromParent();
 	}
 
-	LobbyInvitePanelWidget->OnCloseRequested.RemoveDynamic(
-		this,
-		&ThisClass::HandleLobbyInvitePanelCloseRequested);
-	LobbyInvitePanelWidget->OnStartRequested.RemoveDynamic(
-		this,
-		&ThisClass::HandleLobbyInvitePanelStartRequested);
 	LobbyInvitePanelWidget = nullptr;
 }
 
@@ -318,6 +341,7 @@ void UMultiplayerSessionUIManagerSubsystem::ClearMenuWidget()
 
 void UMultiplayerSessionUIManagerSubsystem::ClearRootWidget()
 {
+	ClearInviteConfirmation();
 	ClearLobbyInvitePanelWidget();
 	ClearMenuWidget();
 
@@ -326,6 +350,8 @@ void UMultiplayerSessionUIManagerSubsystem::ClearRootWidget()
 		RootWidget->RemoveFromParent();
 		RootWidget = nullptr;
 	}
+	RootOwnerWorld.Reset();
+	RootOwnerController.Reset();
 }
 
 void UMultiplayerSessionUIManagerSubsystem::ApplyMenuInputMode(UMenu* InMenuWidget) const
@@ -346,13 +372,17 @@ void UMultiplayerSessionUIManagerSubsystem::ApplyMenuInputMode(UMenu* InMenuWidg
 
 void UMultiplayerSessionUIManagerSubsystem::ApplyLobbyInviteInputMode()
 {
+	if (InviteConfirmationWidget)
+	{
+		return;
+	}
 	APlayerController* PlayerController = GetLocalPlayerController();
 	if (!DoesWidgetBelongToPlayer(LobbyInvitePanelWidget, PlayerController))
 	{
 		return;
 	}
 
-	FInputModeGameAndUI InputModeData;
+	FInputModeUIOnly InputModeData;
 	InputModeData.SetWidgetToFocus(LobbyInvitePanelWidget->TakeWidget());
 	InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 

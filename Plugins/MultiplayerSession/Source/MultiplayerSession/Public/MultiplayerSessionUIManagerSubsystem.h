@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MultiplayerSessionFlowSubsystem.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "MultiplayerSessionUIManagerSubsystem.generated.h"
 
@@ -8,7 +9,7 @@ class APlayerController;
 class ULobbyInvitePanelWidget;
 class UMenu;
 class UMultiplayerSessionRootWidget;
-class UMultiplayerSessionsSubsystem;
+class UMultiplayerInviteConfirmationWidget;
 class UUserWidget;
 
 UCLASS()
@@ -37,15 +38,15 @@ public:
 
 private:
 	UFUNCTION()
-	void HandleLobbyInvitePanelRequested();
+	void HandleFlowStateChanged(EMultiplayerSessionFlowState State, FText Error);
+
+	void HandlePostLoadMap(UWorld* LoadedWorld);
 
 	UFUNCTION()
-	void HandleLobbyInvitePanelCloseRequested();
+	void HandleInviteConfirmationRequested(FString HostName);
+	void ClearInviteConfirmation();
+	void RestoreVisibleWidgetInputMode();
 
-	UFUNCTION()
-	void HandleLobbyInvitePanelStartRequested();
-
-	bool ResolveMultiplayerSessionsSubsystem();
 	bool IsUsableLocalPlayerController(const APlayerController* PlayerController) const;
 	bool DoesWidgetBelongToPlayer(const UUserWidget* Widget, const APlayerController* PlayerController) const;
 	APlayerController* GetLocalPlayerController() const;
@@ -57,18 +58,22 @@ private:
 	void ApplyLobbyInviteInputMode();
 	void RestoreGameInputMode() const;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Multiplayer Sessions|Travel")
-	FString GameplayMapPath = TEXT("/Game/ShooterGameContent/Maps/GameLevel?listen");
-
 	UPROPERTY(Transient)
-	TObjectPtr<UMultiplayerSessionsSubsystem> MultiplayerSessionsSubsystem;
+	TObjectPtr<UMultiplayerSessionFlowSubsystem> SessionFlow;
+
+	FDelegateHandle PostLoadMapHandle;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMultiplayerSessionRootWidget> RootWidget;
+	TWeakObjectPtr<UWorld> RootOwnerWorld;
+	TWeakObjectPtr<APlayerController> RootOwnerController;
 
 	UPROPERTY(Transient)
 	TObjectPtr<ULobbyInvitePanelWidget> LobbyInvitePanelWidget;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMenu> MenuWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMultiplayerInviteConfirmationWidget> InviteConfirmationWidget;
 };

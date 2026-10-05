@@ -145,11 +145,25 @@ GameMode 决定重生时机；PawnExtension 只保证旧 Pawn 清理和新 Pawn 
 | 日期 / 场景 | 结果 | 范围与证据 |
 |---|---|---|
 | 2026-10-04，UE 5.7.4 Editor/Game Development 构建 | PASS | 固定武器最终版本构建成功；`Saved/Validation/20261004-fixed-weapon/Build-Editor-final.log` 与 `Build-Game-final.log` |
-| 2026-10-05，开发者游戏内手动验证 | 开发者确认无异常 | 当前固定武器出生/重生阶段；未提供具体拓扑、人数、重生次数和证据文件，不据此声明 Steam、弱网或完整 Seamless Travel 已通过 |
 | 2026-10-05，阶段 3，UE 5.7.4 Editor/Game Development 构建 | PASS | 旧玩法删除后的构建；`Saved/Stage3/Build-Editor-final.log`、`Saved/Stage3/Build-Game-final.log` |
 | 2026-10-05，阶段 3，资源迁移与全新进程加载 | PASS | 17 个相关 Blueprint 重新编译并保存，5 张项目地图加载；清除废弃资源依赖。最终全新进程检查为 0 errors / 0 warnings；`Saved/Stage3/Assets-finalize-final.log`、`Saved/Stage3/Assets-fresh-load.log` 与 `assets-fresh-load.json`。这些检查不代表 Gameplay 运行通过 |
-| 2026-10-05，阶段 3，开发者游戏内复测反馈 | 开发者确认无异常 | 开发者反馈“没问题”；未提供具体拓扑、人数、重生次数或证据文件，不据此声明 Steam、弱网或完整 Seamless Travel 已通过 |
-| Steam 好友跨设备、弱网、Dedicated Server、完整 Seamless Travel | 待分别验证 | 当前阶段反馈没有单独覆盖说明 |
+| 2026-10-05，精简阶段最终双人 Gameplay 回归 | 开发者确认通过 | 按下方四项清单测试后反馈“都测试成功了”；覆盖双方持枪、双向伤害/击杀、各至少两次重生恢复、死亡不掉落及无重复武器或残留表现 |
+| Steam 好友跨设备、三人及以上观察、弱网、Dedicated Server、完整 Seamless Travel | 待分别验证 | 本次双人 Gameplay 反馈未单独说明这些场景 |
+
+### 2026-10-05：精简阶段双人 Gameplay 回归
+
+- **日期与版本**：2026-10-05；记录时分支为 `refactor/1-restart-minimal-gameplay`，HEAD 为 `961e222`。项目使用 UE 5.7，已有构建记录为 UE 5.7.4；本次手动测试未单独说明引擎补丁版本。
+- **拓扑与人数**：主机与客户端，两人；具体入口（PIE、本地 IP 或 Steam）及是否跨设备未说明。
+
+开发者按以下步骤测试，并确认全部成功：
+
+1. 主机和客户端出生自动持枪，双方能看到对方武器。
+2. 双方分别开火、造成伤害并击杀对方。
+3. 双方各至少重生两次，移动、瞄准、开火与血量恢复。
+4. 死亡不掉落，重生后没有重复武器或残留表现。
+
+- **证据**：本次对话中的开发者手动测试反馈，未提供独立日志、截图或录像路径；不是助手执行的运行测试。
+- **结论与边界**：精简阶段的双人 Gameplay 回归完成。此结果不证明 Steam 建房/邀请/加入、完整 Seamless Travel、多客户端第三方观察、弱网或 Dedicated Server 已通过；也不覆盖弹药扣减与射击预测。
 
 ### 固定武器契约
 

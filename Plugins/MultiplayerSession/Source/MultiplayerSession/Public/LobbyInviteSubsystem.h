@@ -7,7 +7,7 @@
 #include "LobbyInviteSubsystem.generated.h"
 
 USTRUCT(BlueprintType)
-struct FSteamFriendInviteEntry
+struct MULTIPLAYERSESSION_API FSteamFriendInviteEntry
 {
 	GENERATED_BODY()
 
@@ -33,6 +33,7 @@ class MULTIPLAYERSESSION_API ULobbyInviteSubsystem : public UGameInstanceSubsyst
 
 public:
 	ULobbyInviteSubsystem();
+	virtual void Deinitialize() override;
 
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer Sessions|Lobby Invite")
 	void RefreshSteamFriendsList();
@@ -48,6 +49,8 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Multiplayer Sessions|Lobby Invite")
 	FText GetLobbyInviteStatus() const;
 
+	bool IsRefreshingFriends() const { return ActiveRefreshId != 0; }
+
 	UPROPERTY(BlueprintAssignable, Category = "Multiplayer Sessions|Lobby Invite")
 	FOnSteamFriendsListUpdated OnSteamFriendsListUpdated;
 
@@ -55,11 +58,14 @@ public:
 	FOnLobbyInviteStatusChanged OnLobbyInviteStatusChanged;
 
 private:
-	void OnReadSteamFriendsComplete(int32 LocalUserNum, bool bWasSuccessful, const FString& ListName, const FString& ErrorStr);
+	void OnReadSteamFriendsComplete(int32 LocalUserNum, bool bWasSuccessful, const FString& ListName, const FString& ErrorStr, uint64 RefreshId);
 	void BroadcastSteamFriendsListUpdated();
 	void SetLobbyInviteStatus(const FText& StatusText);
 
-	FOnReadFriendsListComplete ReadSteamFriendsCompleteDelegate;
+	IOnlineFriendsPtr RefreshFriendsInterface;
+	uint64 ActiveRefreshId = 0;
+	uint64 NextRefreshId = 0;
+	bool bDeinitializing = false;
 
 	TArray<FSteamFriendInviteEntry> CachedSteamFriends;
 	FText LobbyInviteStatusText;
