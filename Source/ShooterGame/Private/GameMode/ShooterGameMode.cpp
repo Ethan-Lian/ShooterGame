@@ -79,14 +79,13 @@ void AShooterGameMode::HandleRespawnTimerExpired(TWeakObjectPtr<AController> Con
 
 	APawn* CurrentPawn = RespawningController->GetPawn();
 	APlayerCharacter* DeadPawn = DeadCharacter.Get();
-	if (CurrentPawn != nullptr && CurrentPawn != DeadPawn)
+	if (DeadPawn == nullptr)
 	{
 		return;
 	}
-
-	if (AShooterPlayerState* ShooterPlayerState = RespawningController->GetPlayerState<AShooterPlayerState>())
+	if (CurrentPawn != nullptr && CurrentPawn != DeadPawn)
 	{
-		ShooterPlayerState->ResetCombatStateForRespawn();
+		return;
 	}
 
 	if (DeadPawn != nullptr)
@@ -99,5 +98,11 @@ void AShooterGameMode::HandleRespawnTimerExpired(TWeakObjectPtr<AController> Con
 		DeadPawn->Destroy();
 	}
 
+	if (AShooterPlayerState* ShooterPlayerState = RespawningController->GetPlayerState<AShooterPlayerState>())
+	{
+		ShooterPlayerState->ResetCombatStateForRespawn();
+	}
+
 	RestartPlayer(RespawningController);
+
 }

@@ -92,12 +92,48 @@ void UShooterMovementStateComponent::InitializeWithAbilitySystem(UAbilitySystemC
 		return;
 	}
 
+	if (!bDefaultMaxWalkSpeedCaptured)
+	{
+		if (const ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner()))
+		{
+			if (const UCharacterMovementComponent* CharacterMovement = OwnerCharacter->GetCharacterMovement())
+			{
+				DefaultMaxWalkSpeed = CharacterMovement->MaxWalkSpeed;
+				bDefaultMaxWalkSpeedCaptured = true;
+			}
+		}
+	}
+
 	MaxWalkSpeedChangedDelegateHandle = AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
 		UMovementAttributeSet::GetMaxWalkSpeedAttribute()).AddUObject(
 			this,
 			&UShooterMovementStateComponent::HandleMaxWalkSpeedChanged);
 
 	ApplyMaxWalkSpeed(AbilitySystemComponent->GetNumericAttribute(UMovementAttributeSet::GetMaxWalkSpeedAttribute()));
+}
+
+void UShooterMovementStateComponent::UninitializeFromAbilitySystem()
+{
+	CancelSprintAbility();
+
+	if (UAbilitySystemComponent* BoundAbilitySystemComponent = AbilitySystemComponent.Get())
+	{
+		if (MaxWalkSpeedChangedDelegateHandle.IsValid())
+		{
+			BoundAbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
+				UMovementAttributeSet::GetMaxWalkSpeedAttribute()).Remove(MaxWalkSpeedChangedDelegateHandle);
+		}
+	}
+
+	MaxWalkSpeedChangedDelegateHandle.Reset();
+	AbilitySystemComponent = nullptr;
+	bSprintInputPressed = false;
+	LastMoveInput = FVector2D::ZeroVector;
+
+	if (bDefaultMaxWalkSpeedCaptured)
+	{
+		ApplyMaxWalkSpeed(DefaultMaxWalkSpeed);
+	}
 }
 
 bool UShooterMovementStateComponent::IsSprintDirectionAllowed() const

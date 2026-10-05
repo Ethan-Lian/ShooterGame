@@ -19,7 +19,6 @@ bool FWeaponInventoryEntry::IsValid() const
 	return ItemId != INDEX_NONE
 		&& SlotIndex != INDEX_NONE
 		&& WeaponDefinition != nullptr
-		&& PickupActorClass != nullptr
 		&& EquipmentActorClass != nullptr;
 }
 
@@ -118,6 +117,34 @@ bool UShooterInventoryComponent::AddWeaponFromPickup(AShooterWeaponPickupActor* 
 
 	OutItemId = NewEntry.ItemId;
 	OutSlotIndex = NewEntry.SlotIndex;
+	return true;
+}
+
+bool UShooterInventoryComponent::AddWeaponFromDefinition(UWeaponDataAsset* WeaponDefinition, int32& OutItemId)
+{
+	OutItemId = INDEX_NONE;
+	if (GetOwner() == nullptr || !GetOwner()->HasAuthority() || WeaponDefinition == nullptr
+		|| WeaponDefinition->EquipmentActorClass == nullptr)
+	{
+		return false;
+	}
+
+	const int32 FreeSlotIndex = FindFirstFreeSlotIndex();
+	if (FreeSlotIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	FWeaponInventoryEntry NewEntry;
+	NewEntry.ItemId = NextItemId++;
+	NewEntry.SlotIndex = FreeSlotIndex;
+	NewEntry.WeaponDefinition = WeaponDefinition;
+	NewEntry.PickupActorClass = WeaponDefinition->PickupActorClass;
+	NewEntry.EquipmentActorClass = WeaponDefinition->EquipmentActorClass;
+	NewEntry.CurrentMagazineAmmo = WeaponDefinition->AmmoConfig.MagazineSize;
+	NewEntry.CurrentReserveAmmo = WeaponDefinition->AmmoConfig.InitialReserveAmmo;
+	InventoryEntries.Add(NewEntry);
+	OutItemId = NewEntry.ItemId;
 	return true;
 }
 

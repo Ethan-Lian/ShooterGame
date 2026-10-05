@@ -21,6 +21,7 @@ class UShooterMovementStateComponent;
 class UShooterWeaponEquipmentComponent;
 class UShooterWeaponInteractionComponent;
 class UShooterWeaponInstance;
+class UShooterPawnExtensionComponent;
 class USpringArmComponent;
 struct FGameplayEventData;
 
@@ -28,6 +29,8 @@ UCLASS()
 class SHOOTERGAME_API APlayerCharacter : public ACharacter, public IAbilitySystemInterface, public IShooterCombatInterface, public IShooterEquipmentInterface
 {
 	GENERATED_BODY()
+
+	friend class UShooterPawnExtensionComponent;
 
 public:
 	APlayerCharacter();
@@ -46,11 +49,24 @@ public:
 	// Returns the combat ASC through the avatar combat interface.
 	virtual UAbilitySystemComponent* GetShooterAbilitySystemComponent() const override;
 
-	// Initializes ASC actor info when the character becomes possessed.
+	// Lets APawn's controller-change notification drive Extension initialization.
 	virtual void PossessedBy(AController* NewController) override;
 
 	// Initializes ASC actor info on clients once PlayerState replicates in.
 	virtual void OnRep_PlayerState() override;
+
+	// Releases Pawn-scoped bindings before APawn clears Controller/PlayerState.
+	virtual void UnPossessed() override;
+
+	// Preserves the APawn callback for compatibility; Super routes to NotifyControllerChanged.
+	virtual void OnRep_Controller() override;
+
+	// Refreshes ASC actor info when possession ownership changes.
+	virtual void NotifyControllerChanged() override;
+
+	// Returns the component that coordinates Pawn-scoped ASC and gameplay bindings.
+	UFUNCTION(BlueprintPure, Category = "Player|Lifecycle")
+	UShooterPawnExtensionComponent* GetPawnExtensionComponent() const { return PawnExtensionComponent; }
 
 public:
 	// Returns the camera boom used to position the third-person camera.
@@ -131,6 +147,7 @@ public:
 protected:
 	// Binds health delegates once components are ready.
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	// Optional animation montage played once when this pawn enters the dead state.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Death")
@@ -164,6 +181,10 @@ private:
 	// Owns local pickup traces and the currently highlighted world weapon.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UShooterWeaponInteractionComponent> WeaponInteractionComponent;
+
+	// Coordinates lifecycle initialization and cleanup for the current Pawn.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player|Lifecycle", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UShooterPawnExtensionComponent> PawnExtensionComponent;
 	
 	// Overhead Widget 
 	UPROPERTY(EditAnywhere,BlueprintReadOnly,meta=(AllowPrivateAccess = true))
@@ -173,24 +194,16 @@ private:
 	// Resolves the typed Shooter PlayerState helper.
 	AShooterPlayerState* GetShooterPlayerState() const;
 	
-	// Links the pawn avatar to the PlayerState-owned ASC and initializes health bindings.
-	void InitializeAbilitySystemActorInfo();
-
-	// Rebinds the dead-state tag listener after ASC actor info changes.
-	void BindDeathStateTagListener(UAbilitySystemComponent* AbilitySystemComponent);
-
 	// Mirrors health changes for logging or future HUD hooks.
 	UFUNCTION()
 	void HandleHealthChanged(float OldValue, float NewValue);
 
-	// Applies local presentation and gameplay-facing pawn shutdown for death.
-	void ApplyDeathPresentation();
-
 	// Plays the configured death montage if the mesh has an animation instance.
 	void PlayDeathMontage();
 
-	// Reacts when the replicated ASC dead tag is added to this avatar.
-	void HandleDeathStateTagChanged(const FGameplayTag Tag, int32 NewCount);
+	// Called by PawnExtension when the ASC dead tag changes.
+	void ApplyDeathPresentation();
+	void RestoreAlivePresentation();
 
 	// Scales horizontal look input before it reaches the controller.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Player|Camera", meta = (AllowPrivateAccess = "true", ClampMin = "0.0"))
@@ -203,7 +216,4 @@ private:
 	// Prevents death presentation from running more than once per pawn.
 	bool bDeathHandled = false;
 
-	TWeakObjectPtr<UAbilitySystemComponent> BoundDeathStateAbilitySystemComponent;
-
-	FDelegateHandle DeathStateTagChangedDelegateHandle;
 };

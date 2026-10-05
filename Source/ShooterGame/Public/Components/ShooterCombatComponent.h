@@ -41,6 +41,15 @@ public:
 	// Flushes combat state during death handling and returns whether fire input changed.
 	bool HandleOwnerDeath();
 
+	// Clears the local death latch when this component is reused by a live pawn.
+	void HandleOwnerRespawn();
+
+	// Clears transient input and targeting state when the owning Pawn is unpossessed or destroyed.
+	void UninitializeForPawn();
+
+	// Returns whether the fire input is currently held by this component.
+	bool IsFireInputPressed() const { return bIsFireInputPressed; }
+
 private:
 	// Resolves the owning character's PlayerState-hosted ASC.
 	UAbilitySystemComponent* GetOwningAbilitySystemComponent() const;

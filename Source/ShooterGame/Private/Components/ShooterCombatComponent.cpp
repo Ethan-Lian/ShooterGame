@@ -136,6 +136,25 @@ bool UShooterCombatComponent::HandleOwnerDeath()
 	return bFireInputStopped;
 }
 
+void UShooterCombatComponent::HandleOwnerRespawn()
+{
+	bOwnerDeathHandled = false;
+	bIsFireInputPressed = false;
+	SetAimInputPressed(false);
+}
+
+void UShooterCombatComponent::UninitializeForPawn()
+{
+	bOwnerDeathHandled = false;
+	bIsFireInputPressed = false;
+	SetAimInputPressed(false);
+
+	if (UShooterWeaponInteractionComponent* InteractionComponent = GetOwningWeaponInteractionComponent())
+	{
+		InteractionComponent->ClearTargetedPickupWeapon();
+	}
+}
+
 UAbilitySystemComponent* UShooterCombatComponent::GetOwningAbilitySystemComponent() const
 {
 	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner());

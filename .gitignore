@@ -1,7 +1,6 @@
 # Private project notes
 CLAUDE.md
 .claude/
-docs/
 
 # Gameplay/content assets kept out of the public showcase repository
 Content/
@@ -49,3 +48,6 @@ Plugins/Developer/RiderLink/
 # Generated documentation outputs
 docs/_site/
 docs/generated/
+
+# Local restart planning notes
+/docs/restart-plan.md

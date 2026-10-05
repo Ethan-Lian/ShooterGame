@@ -85,6 +85,7 @@ void AShooterPlayerState::ResetCombatStateForRespawn()
 	AbilitySystemComponent->SetLooseGameplayTagCount(TAG_State_Movement_Sprinting, 0, EGameplayTagReplicationState::CountToOwner);
 
 	ApplyStartupAttributes();
+
 }
 
 void AShooterPlayerState::GrantStartupAbilitiesIfNeeded()

@@ -80,6 +80,9 @@ public:
 	// Adds a world pickup actor into the owner's logical inventory.
 	bool AddWeaponFromPickup(AShooterWeaponPickupActor* PickupWeapon, int32& OutItemId, int32& OutSlotIndex);
 
+	// Grants a weapon directly from its definition with default ammo on the server.
+	bool AddWeaponFromDefinition(UWeaponDataAsset* WeaponDefinition, int32& OutItemId);
+
 	// Removes a logical weapon entry from the inventory by item id.
 	bool RemoveWeaponByItemId(int32 ItemId, FWeaponInventoryEntry& OutRemovedEntry);
 

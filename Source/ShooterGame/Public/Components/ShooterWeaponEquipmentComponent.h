@@ -11,6 +11,7 @@ class UShooterCombatComponent;
 class UShooterInventoryComponent;
 class UShooterWeaponInteractionComponent;
 class UShooterWeaponInstance;
+class UWeaponDataAsset;
 struct FWeaponInventoryEntry;
 
 enum class EShooterWeaponDropMode : uint8
@@ -42,34 +43,44 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Shooter|Combat")
 	int32 GetEquippedItemId() const { return EquippedItemId; }
 
-	// Requests that the authority path equips the current valid world weapon.
+	// Legacy pickup entry point; disabled for fixed-weapon gameplay.
 	bool StartPickupInput();
 
-	// Requests that the authority path drops the currently equipped weapon.
+	// Legacy drop entry point; disabled for fixed-weapon gameplay.
 	bool StartDropInput();
 
-	// Requests that the authority path equips the weapon occupying the supplied slot.
+	// Legacy slot selection entry point; disabled for fixed-weapon gameplay.
 	bool EquipInventorySlot(int32 SlotIndex);
 
-	// Cycles to the next occupied logical weapon slot.
+	// Legacy slot cycling entry point; disabled for fixed-weapon gameplay.
 	bool EquipNextInventorySlot();
 
-	// Cycles to the previous occupied logical weapon slot.
+	// Legacy slot cycling entry point; disabled for fixed-weapon gameplay.
 	bool EquipPreviousInventorySlot();
 
-	// Flushes equipment state during death handling.
+	// Destroys the equipped weapon and removes its inventory entry without dropping it.
 	bool HandleOwnerDeath();
 
 	// Rebuilds owner-side cached weapon state after replicated inventory changes arrive.
 	void HandleInventoryReplicated();
 
-	// Tries to add and equip the world weapon currently validated under the crosshair.
+	// Grants/equips the default weapon on authority; clients only refresh presentation.
+	void RefreshEquipmentForPawnReady();
+
+	// Clears Pawn-scoped presentation and transient instance state without changing PlayerState inventory.
+	void UninitializeForPawn();
+
+	// Legacy ability entry point; disabled for fixed-weapon gameplay.
 	bool TryPickupTargetWeapon(AShooterWeaponPickupActor* TargetWeapon);
 
-	// Drops the equipped weapon into the world on the authority path.
+	// Legacy ability entry point; disabled for fixed-weapon gameplay.
 	bool DropEquippedWeapon();
 
 private:
+	// The single Hitscan weapon granted when a live Pawn becomes ready.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UWeaponDataAsset> DefaultWeaponDefinition;
+
 	// Resolves the owning character used for attachment and character movement data.
 	ACharacter* GetOwningCharacter() const;
 

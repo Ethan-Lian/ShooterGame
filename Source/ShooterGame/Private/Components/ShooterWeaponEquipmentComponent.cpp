@@ -6,7 +6,9 @@
 #include "Components/ShooterCombatComponent.h"
 #include "Components/ShooterInventoryComponent.h"
 #include "Components/ShooterWeaponInteractionComponent.h"
+#include "Components/ShooterPawnExtensionComponent.h"
 #include "CollisionShape.h"
+#include "Character/PlayerCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/Controller.h"
@@ -16,6 +18,9 @@
 #include "Weapon/ShooterWeaponEquipmentActor.h"
 #include "Weapon/ShooterWeaponPickupActor.h"
 #include "Weapon/ShooterWeaponInstance.h"
+#include "Weapon/WeaponDataAsset.h"
+#include "UObject/ConstructorHelpers.h"
+#include "ShooterGame.h"
 
 namespace
 {
@@ -34,6 +39,13 @@ UShooterWeaponEquipmentComponent::UShooterWeaponEquipmentComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);
+
+	static ConstructorHelpers::FObjectFinder<UWeaponDataAsset> DefaultWeapon(
+		TEXT("/Game/ShooterGameContent/DataConfig/DA_Weapon_AK47.DA_Weapon_AK47"));
+	if (DefaultWeapon.Succeeded())
+	{
+		DefaultWeaponDefinition = DefaultWeapon.Object;
+	}
 }
 
 void UShooterWeaponEquipmentComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -45,105 +57,27 @@ void UShooterWeaponEquipmentComponent::GetLifetimeReplicatedProps(TArray<FLifeti
 
 bool UShooterWeaponEquipmentComponent::StartPickupInput()
 {
-	if (IsEquipmentInteractionBlocked())
-	{
-		return false;
-	}
-
-	UShooterAbilitySystemComponent* ShooterASC = GetOwningShooterAbilitySystemComponent();
-	if (ShooterASC != nullptr)
-	{
-		ShooterASC->AbilityInputTagPressed(TAG_Input_Interact);
-	}
-
-	return true;
+	return false;
 }
 
 bool UShooterWeaponEquipmentComponent::StartDropInput()
 {
-	if (EquippedItemId == INDEX_NONE || IsEquipmentInteractionBlocked())
-	{
-		return false;
-	}
-
-	if (UShooterCombatComponent* CombatComponent = GetOwningCombatComponent())
-	{
-		CombatComponent->StopFireInput();
-	}
-
-	UShooterAbilitySystemComponent* ShooterASC = GetOwningShooterAbilitySystemComponent();
-	if (ShooterASC != nullptr)
-	{
-		ShooterASC->AbilityInputTagPressed(TAG_Input_Drop);
-	}
-
-	return true;
+	return false;
 }
 
 bool UShooterWeaponEquipmentComponent::EquipInventorySlot(int32 SlotIndex)
 {
-	if (SlotIndex == INDEX_NONE || IsEquipmentInteractionBlocked())
-	{
-		return false;
-	}
-
-	const UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent();
-	const FWeaponInventoryEntry* TargetEntry = InventoryComponent != nullptr
-		? InventoryComponent->GetInventoryEntryBySlotIndex(SlotIndex)
-		: nullptr;
-	if (TargetEntry == nullptr)
-	{
-		return false;
-	}
-
-	AActor* OwnerActor = GetOwner();
-	if (OwnerActor != nullptr && OwnerActor->HasAuthority())
-	{
-		return EquipInventoryItemById(TargetEntry->ItemId);
-	}
-
-	ServerEquipInventorySlot(SlotIndex);
-	return true;
+	return false;
 }
 
 bool UShooterWeaponEquipmentComponent::EquipNextInventorySlot()
 {
-	const UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent();
-	if (InventoryComponent == nullptr)
-	{
-		return false;
-	}
-
-	int32 CurrentSlotIndex = INDEX_NONE;
-	if (const FWeaponInventoryEntry* EquippedEntry = InventoryComponent->GetInventoryEntryByItemId(EquippedItemId))
-	{
-		CurrentSlotIndex = EquippedEntry->SlotIndex;
-	}
-
-	const int32 NextSlotIndex = CurrentSlotIndex == INDEX_NONE
-		? InventoryComponent->FindFirstOccupiedSlotIndex()
-		: InventoryComponent->FindNextOccupiedSlotIndex(CurrentSlotIndex, true);
-	return NextSlotIndex != INDEX_NONE ? EquipInventorySlot(NextSlotIndex) : false;
+	return false;
 }
 
 bool UShooterWeaponEquipmentComponent::EquipPreviousInventorySlot()
 {
-	const UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent();
-	if (InventoryComponent == nullptr)
-	{
-		return false;
-	}
-
-	int32 CurrentSlotIndex = INDEX_NONE;
-	if (const FWeaponInventoryEntry* EquippedEntry = InventoryComponent->GetInventoryEntryByItemId(EquippedItemId))
-	{
-		CurrentSlotIndex = EquippedEntry->SlotIndex;
-	}
-
-	const int32 PreviousSlotIndex = CurrentSlotIndex == INDEX_NONE
-		? InventoryComponent->FindFirstOccupiedSlotIndex()
-		: InventoryComponent->FindNextOccupiedSlotIndex(CurrentSlotIndex, false);
-	return PreviousSlotIndex != INDEX_NONE ? EquipInventorySlot(PreviousSlotIndex) : false;
+	return false;
 }
 
 bool UShooterWeaponEquipmentComponent::HandleOwnerDeath()
@@ -160,60 +94,95 @@ bool UShooterWeaponEquipmentComponent::HandleOwnerDeath()
 		return false;
 	}
 
-	UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent();
-	if (InventoryComponent == nullptr)
+	const bool bHadWeapon = EquippedWeapon != nullptr || EquippedItemId != INDEX_NONE;
+	DestroyEquippedWeaponActor();
+	if (UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent())
 	{
-		return false;
+		FWeaponInventoryEntry RemovedEntry;
+		InventoryComponent->RemoveWeaponByItemId(EquippedItemId, RemovedEntry);
 	}
-
-	const TArray<FWeaponInventoryEntry> InventoryEntriesToDrop = InventoryComponent->GetInventoryEntries();
-	if (InventoryEntriesToDrop.IsEmpty())
-	{
-		DestroyEquippedWeaponActor();
-		ClearEquippedWeaponInstance();
-		EquippedItemId = INDEX_NONE;
-		return false;
-	}
-
-	AShooterWeaponEquipmentActor* EquippedPresentationActor = EquippedWeapon;
-	EquippedWeapon = nullptr;
 	EquippedItemId = INDEX_NONE;
 	ClearEquippedWeaponInstance();
-
-	const ACharacter* OwnerCharacter = GetOwningCharacter();
-	const FVector RightDirection = OwnerCharacter != nullptr ? OwnerCharacter->GetActorRightVector() : FVector::RightVector;
-
-	bool bDroppedAnyWeapon = false;
-	for (const FWeaponInventoryEntry& Entry : InventoryEntriesToDrop)
-	{
-		if (!Entry.IsValid())
-		{
-			continue;
-		}
-
-		FTransform DropTransform = GetWeaponDeathDropTransform();
-		const FVector DropLocation = DropTransform.GetLocation() + (RightDirection * 35.f * static_cast<float>(Entry.SlotIndex));
-		DropTransform.SetLocation(DropLocation);
-
-		if (SpawnWorldPickupFromEntry(Entry, DropTransform, EShooterWeaponDropMode::DeathInPlace))
-		{
-			FWeaponInventoryEntry RemovedEntry;
-			InventoryComponent->RemoveWeaponByItemId(Entry.ItemId, RemovedEntry);
-			bDroppedAnyWeapon = true;
-		}
-	}
-
-	if (EquippedPresentationActor != nullptr)
-	{
-		EquippedPresentationActor->Destroy();
-	}
-
-	return bDroppedAnyWeapon;
+	return bHadWeapon;
 }
 
 void UShooterWeaponEquipmentComponent::HandleInventoryReplicated()
 {
 	RefreshEquippedWeaponInstance();
+}
+
+void UShooterWeaponEquipmentComponent::RefreshEquipmentForPawnReady()
+{
+	AActor* OwnerActor = GetOwner();
+	UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent();
+
+	if (IsEquipmentInteractionBlocked())
+	{
+		return;
+	}
+
+	if (OwnerActor != nullptr && OwnerActor->HasAuthority() && EquippedWeapon == nullptr && InventoryComponent != nullptr)
+	{
+		if (DefaultWeaponDefinition == nullptr || DefaultWeaponDefinition->FireConfig.FireMode != EWeaponFireMode::Hitscan)
+		{
+			UE_LOG(LogShooterGame, Error, TEXT("%s requires a default Hitscan weapon definition."), *GetNameSafe(OwnerActor));
+			return;
+		}
+
+		const int32 FirstSlotIndex = InventoryComponent->FindFirstOccupiedSlotIndex();
+		const FWeaponInventoryEntry* ExistingEntry = InventoryComponent->GetInventoryEntryBySlotIndex(FirstSlotIndex);
+		int32 ItemId = ExistingEntry != nullptr ? ExistingEntry->ItemId : INDEX_NONE;
+		const bool bNeedsGrant = ItemId == INDEX_NONE;
+		if (bNeedsGrant && !InventoryComponent->AddWeaponFromDefinition(DefaultWeaponDefinition, ItemId))
+		{
+			UE_LOG(LogShooterGame, Error, TEXT("Failed to grant default weapon to %s."), *GetNameSafe(OwnerActor));
+			return;
+		}
+
+		if (!EquipInventoryItemById(ItemId) && bNeedsGrant)
+		{
+			FWeaponInventoryEntry RemovedEntry;
+			InventoryComponent->RemoveWeaponByItemId(ItemId, RemovedEntry);
+			UE_LOG(LogShooterGame, Error, TEXT("Failed to equip default weapon for %s."), *GetNameSafe(OwnerActor));
+		}
+	}
+
+	if (EquippedWeapon != nullptr)
+	{
+		if (EquippedWeapon->IsActorBeingDestroyed())
+		{
+			ClearLocalEquippedWeaponPresentation();
+			return;
+		}
+
+		if (ACharacter* OwnerCharacter = GetOwningCharacter())
+		{
+			if (EquippedWeapon != nullptr)
+			{
+				EquippedWeapon->EnterEquippedState(OwnerCharacter);
+			}
+		}
+	}
+
+	RefreshEquippedWeaponInstance();
+}
+
+void UShooterWeaponEquipmentComponent::UninitializeForPawn()
+{
+	AShooterWeaponEquipmentActor* WeaponToClear = EquippedWeapon;
+	ClearLocalEquippedWeaponPresentation(WeaponToClear);
+
+	if (AActor* OwnerActor = GetOwner(); OwnerActor != nullptr && OwnerActor->HasAuthority())
+	{
+		if (WeaponToClear != nullptr)
+		{
+			WeaponToClear->Destroy();
+		}
+		EquippedWeapon = nullptr;
+		EquippedItemId = INDEX_NONE;
+	}
+
+	ClearEquippedWeaponInstance();
 }
 
 ACharacter* UShooterWeaponEquipmentComponent::GetOwningCharacter() const
@@ -270,49 +239,7 @@ UShooterAbilitySystemComponent* UShooterWeaponEquipmentComponent::GetOwningShoot
 
 bool UShooterWeaponEquipmentComponent::TryPickupTargetWeapon(AShooterWeaponPickupActor* TargetWeapon)
 {
-	AActor* OwnerActor = GetOwner();
-	UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent();
-	if (OwnerActor == nullptr || !OwnerActor->HasAuthority() || IsEquipmentInteractionBlocked() || InventoryComponent == nullptr)
-	{
-		return false;
-	}
-
-	if (TargetWeapon == nullptr)
-	{
-		return false;
-	}
-
-	// Revalidate that the target weapon is a valid pickup within acceptable range.
-	// We prefer the view-trace match but allow a distance-based fallback because the
-	// server's physics-driven weapon position and the client's view rotation can
-	// diverge under network latency, causing the view trace to miss the weapon that
-	// the client is legitimately looking at.
-	UShooterWeaponInteractionComponent* InteractionComponent = GetOwningWeaponInteractionComponent();
-	AShooterWeaponPickupActor* ViewTraceWeapon = InteractionComponent != nullptr
-		? InteractionComponent->FindPickupWeaponFromView()
-		: nullptr;
-
-	const bool bViewTraceMatches = ViewTraceWeapon != nullptr && ViewTraceWeapon == TargetWeapon;
-
-	if (!bViewTraceMatches && !IsValidWorldPickupForPickup(TargetWeapon))
-	{
-		return false;
-	}
-
-	// Prefer the view-trace result when it matches; otherwise use the client-supplied target.
-	AShooterWeaponPickupActor* WeaponToPickup = bViewTraceMatches ? ViewTraceWeapon : TargetWeapon;
-
-	int32 NewItemId = INDEX_NONE;
-	int32 NewSlotIndex = INDEX_NONE;
-	if (!InventoryComponent->AddWeaponFromPickup(WeaponToPickup, NewItemId, NewSlotIndex))
-	{
-		if (EquippedItemId == INDEX_NONE || !DropEquippedWeapon() || !InventoryComponent->AddWeaponFromPickup(WeaponToPickup, NewItemId, NewSlotIndex))
-		{
-			return false;
-		}
-	}
-
-	return EquipInventoryItemById(NewItemId, WeaponToPickup);
+	return false;
 }
 
 bool UShooterWeaponEquipmentComponent::EquipInventoryItemById(int32 ItemId, AShooterWeaponPickupActor* ExistingPickupActor)
@@ -357,66 +284,7 @@ bool UShooterWeaponEquipmentComponent::EquipInventoryItemById(int32 ItemId, ASho
 
 bool UShooterWeaponEquipmentComponent::DropEquippedWeapon()
 {
-	AActor* OwnerActor = GetOwner();
-	UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent();
-	if (OwnerActor == nullptr || !OwnerActor->HasAuthority() || EquippedItemId == INDEX_NONE || InventoryComponent == nullptr)
-	{
-		return false;
-	}
-
-	if (UShooterCombatComponent* CombatComponent = GetOwningCombatComponent())
-	{
-		CombatComponent->StopFireInput();
-	}
-
-	const FWeaponInventoryEntry* EquippedEntry = InventoryComponent->GetInventoryEntryByItemId(EquippedItemId);
-	if (EquippedEntry == nullptr || !EquippedEntry->IsValid())
-	{
-		DestroyEquippedWeaponActor();
-		EquippedItemId = INDEX_NONE;
-		ClearEquippedWeaponInstance();
-		return false;
-	}
-
-	const int32 DroppedSlotIndex = EquippedEntry->SlotIndex;
-	const FTransform DropTransform = GetWeaponDropTransform();
-	AShooterWeaponEquipmentActor* EquippedPresentationActor = EquippedWeapon;
-	const int32 DroppedItemId = EquippedItemId;
-
-	EquippedWeapon = nullptr;
-	EquippedItemId = INDEX_NONE;
-	ClearEquippedWeaponInstance();
-
-	FWeaponInventoryEntry RemovedEntry;
-	if (!InventoryComponent->RemoveWeaponByItemId(DroppedItemId, RemovedEntry))
-	{
-		EquippedWeapon = EquippedPresentationActor;
-		EquippedItemId = DroppedItemId;
-		RefreshEquippedWeaponInstance();
-		return false;
-	}
-
-	const bool bSpawnedWorldPickup = SpawnWorldPickupFromEntry(RemovedEntry, DropTransform, EShooterWeaponDropMode::ManualThrow);
-	if (EquippedPresentationActor != nullptr)
-	{
-		EquippedPresentationActor->Destroy();
-	}
-
-	if (!bSpawnedWorldPickup)
-	{
-		return false;
-	}
-
-	const int32 NextSlotIndex = InventoryComponent->FindNextOccupiedSlotIndex(DroppedSlotIndex, true);
-	const FWeaponInventoryEntry* NextEntry = NextSlotIndex != INDEX_NONE
-		? InventoryComponent->GetInventoryEntryBySlotIndex(NextSlotIndex)
-		: nullptr;
-	if (NextEntry != nullptr)
-	{
-		EquipInventoryItemById(NextEntry->ItemId);
-	}
-
-	return true;
+	return false;
 }
 
 AShooterWeaponEquipmentActor* UShooterWeaponEquipmentComponent::SpawnEquippedWeaponActor(const FWeaponInventoryEntry& Entry)
@@ -665,14 +533,20 @@ void UShooterWeaponEquipmentComponent::ClearLocalEquippedWeaponPresentation(ASho
 	const bool bClearedCurrentWeapon = WeaponToClear == nullptr || WeaponToClear == EquippedWeapon;
 	if (bClearedCurrentWeapon)
 	{
-		EquippedWeapon = nullptr;
-		EquippedItemId = INDEX_NONE;
+		// Replicated fields belong to the server. A client may temporarily unbind
+		// after receiving them and must retain them for the next ready callback.
 		ClearEquippedWeaponInstance();
 	}
 }
 
 void UShooterWeaponEquipmentComponent::RefreshEquippedWeaponInstance()
 {
+	if (IsEquipmentInteractionBlocked())
+	{
+		ClearEquippedWeaponInstance();
+		return;
+	}
+
 	const UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent();
 	const FWeaponInventoryEntry* InventoryEntry = InventoryComponent != nullptr
 		? InventoryComponent->GetInventoryEntryByItemId(EquippedItemId)
@@ -765,9 +639,15 @@ bool UShooterWeaponEquipmentComponent::IsValidWorldPickupForPickup(const AShoote
 
 void UShooterWeaponEquipmentComponent::OnRep_EquippedWeapon(AShooterWeaponEquipmentActor* OldEquippedWeapon)
 {
+	const APlayerCharacter* OwnerPawn = Cast<APlayerCharacter>(GetOwner());
 	if (OldEquippedWeapon != nullptr && OldEquippedWeapon != EquippedWeapon)
 	{
 		ClearLocalEquippedWeaponPresentation(OldEquippedWeapon);
+	}
+
+	if (OwnerPawn == nullptr || OwnerPawn->GetPawnExtensionComponent() == nullptr || !OwnerPawn->GetPawnExtensionComponent()->IsGameplayReady())
+	{
+		return;
 	}
 
 	if (EquippedWeapon == nullptr)

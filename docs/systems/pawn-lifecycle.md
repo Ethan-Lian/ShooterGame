@@ -1,0 +1,164 @@
+# Pawn Lifecycle
+
+## Why
+
+同一个玩家可以经历 Possession、客户端 PlayerState/Controller 复制、UnPossess、死亡、Pawn 销毁和重生。ASC 与 Inventory 位于 PlayerState，而 Health、Movement、Combat、Equipment 和表现位于当前 Pawn；如果每个引擎回调分别初始化这些关系，就容易产生重复 Delegate、旧 Avatar 或错误清理新 Pawn。
+
+`UShooterPawnExtensionComponent` 的职责是协调当前 Pawn 的绑定顺序和幂等清理。它不是新的状态所有者，也不替代 PlayerState、ASC 或各 Gameplay Component。
+
+## Ownership and Lifetime
+
+```text
+AShooterPlayerState                         current APlayerCharacter
+  ├── UShooterAbilitySystemComponent          ├── UShooterPawnExtensionComponent
+  ├── UCombatAttributeSet                     ├── UShooterHealthComponent
+  ├── UMovementAttributeSet                   ├── UShooterCombatComponent
+  └── UShooterInventoryComponent              ├── UShooterMovementStateComponent
+                                               ├── UShooterWeaponEquipmentComponent
+                                               └── UShooterWeaponInteractionComponent
+```
+
+- ASC Owner：`AShooterPlayerState`
+- ASC Avatar：当前 `APlayerCharacter`
+- Inventory Owner：`AShooterPlayerState`
+- Equipment、Health、Movement、Combat 和 PawnExtension：当前 `APlayerCharacter`
+
+PlayerState-owned 状态跨当前 Pawn 重生存在；Pawn-owned 绑定和表现必须在旧 Pawn 结束前清理。死亡规则可以主动从 Inventory 删除武器，因此长期所有权不代表数据永远保留。
+
+## Authority and Replication
+
+- 服务器 Possess Pawn、授予 Startup Ability/Effect、修改 Inventory、创建 Equipment Actor、处理死亡并调用 `RestartPlayer`。
+- 客户端通过 `OnRep_PlayerState` 和 Controller 变更得知依赖已经可用，再运行相同的幂等初始化检查。
+- PawnExtension 可以在服务器和客户端建立本地 Delegate/表现绑定，但不写入一份新的复制状态。
+- `State.Dead` 由 ServerOnly Death Ability 应用；客户端监听复制后的 Tag 并更新当前 Pawn 表现。
+- 客户端 Equipment 刷新只能消费 `EquippedWeapon`、OwnerOnly `EquippedItemId` 和 Inventory 复制，不得 Spawn 权威 Equipment Actor。
+
+## Runtime Flow
+
+### Initialization
+
+```text
+BeginPlay / OnRep_PlayerState / NotifyControllerChanged
+  -> CheckDefaultInitialization
+  -> resolve ShooterPlayerState + ASC
+  -> if bound PlayerState/ASC changed, uninitialize old binding
+  -> PlayerStateReady
+  -> detach a stale old Avatar when necessary
+  -> PlayerState.InitializeAbilitySystem(CurrentPawn)
+  -> ASCReady
+  -> initialize Health and Movement with ASC
+  -> bind State.Dead delegate
+  -> ComponentBindingsReady
+  -> GameplayReady
+  -> apply presentation from current State.Dead value
+  -> refresh Equipment: authority grants fixed weapon, clients refresh presentation
+```
+
+状态顺序是：
+
+```text
+Spawned -> PlayerStateReady -> ASCReady -> ComponentBindingsReady -> GameplayReady
+```
+
+这些状态只表达初始化前置条件，不替代组件内部状态。重复调用到达 `GameplayReady` 后，只执行需要幂等刷新的 Equipment 和 dead/alive presentation。
+
+### Controller changes
+
+- `PossessedBy` 调用 `Super` 后，由 UE 的 Controller 变更路径进入 `NotifyControllerChanged`。
+- Controller 有效时，PawnExtension 刷新 ASC ActorInfo 并重新检查依赖。
+- Controller 清空时，进入统一解绑。
+- `OnRep_Controller` 不额外重复转发初始化逻辑。
+
+### Uninitialize
+
+```text
+UnPossessed / Controller cleared / EndPlay
+  -> if this Pawn is still ASC Avatar:
+       cancel active Pawn-scoped abilities
+       clear ability input
+       remove gameplay cues
+  -> uninitialize Combat and Equipment
+  -> unbind Movement and Health from ASC
+  -> remove State.Dead delegate
+  -> if ASC Avatar is still this Pawn:
+       Owner valid   -> SetAvatarActor(nullptr)
+       Owner invalid -> ClearActorInfo()
+  -> clear weak bindings
+  -> Spawned
+```
+
+清理函数允许重复调用。最重要的保护条件是 `ASC->GetAvatarActor() == Pawn`：旧 Pawn 不能清除已经绑定到新 Pawn 的 Avatar。
+
+### Death and respawn
+
+```text
+Damage Effect
+  -> Health <= 0 on authority
+  -> GameplayEvent.Death
+  -> GA_Death (ServerOnly)
+  -> State.Dead + Message.Player.Death
+  -> Pawn applies death presentation from Tag
+  -> GameMode respawn timer
+  -> UnPossess + destroy old Pawn
+  -> PlayerState.ResetCombatStateForRespawn
+  -> RestartPlayer
+  -> new Pawn repeats initialization with same PlayerState-owned ASC
+```
+
+GameMode 决定重生时机；PawnExtension 只保证旧 Pawn 清理和新 Pawn 绑定正确。
+
+## Invariants
+
+1. 项目完成 ActorInfo 绑定后，ASC Owner 是有效的 `AShooterPlayerState`，Avatar 是当前 Pawn；解绑后可以为 `nullptr`。引擎组件初始阶段可能先以 Owner 同时作为 Avatar，不能把这个过渡状态误作完成绑定。
+2. 同一个 PlayerState/ASC/Pawn 组合只能有一套 Health、Movement 和 Death Tag 绑定。
+3. Startup Ability/Effect 的长期授予状态位于 PlayerState，不因新 Pawn 重复授予。
+4. 旧 Pawn 只有仍是 ASC Avatar 时才能取消 Ability、移除 Cue 或清除 Avatar。
+5. Inventory 属于 PlayerState；Equipment Actor 和 transient WeaponInstance 属于当前 Pawn。
+6. 只有服务器可以创建/销毁权威 Equipment Actor 和修改 Inventory。
+7. `State.Dead` 是死亡事实，Character 的移动、碰撞、输入和 Montage 是表现。
+
+## Failure Modes
+
+| 失败模式 | 防护 |
+|---|---|
+| `OnRep_PlayerState` 和 Controller 回调顺序变化 | 所有入口调用同一套幂等前置条件检查 |
+| 旧 Pawn 销毁时 ASC 已绑定新 Pawn | 清理前验证 `GetAvatarActor() == OldPawn` |
+| 重复注册 Death Tag Delegate | 保存 `FDelegateHandle`，绑定前先解绑 |
+| Movement/Health 继续引用旧 ASC | Pawn 解绑时显式调用各组件的 Uninitialize |
+| 客户端复制回调重复创建武器 | 客户端只刷新表现；服务器才 Spawn Actor |
+| ASC Owner 已失效仍调用 `SetAvatarActor` | Owner 有效时 SetAvatarActor，否则 ClearActorInfo |
+| 新 Pawn 继承旧 Pawn 激活中的短期 Ability | 解绑时取消当前激活 Ability 并清空输入/Cue |
+| 未来需要跨 Avatar Ability | 当前尚无保留契约，必须先设计标签/分类再引入 |
+
+## Code Entry Points
+
+| 关注点 | 入口 |
+|---|---|
+| 生命周期状态和公开入口 | `Source/ShooterGame/Public/Components/ShooterPawnExtensionComponent.h` |
+| 状态推进、绑定与清理 | `Source/ShooterGame/Private/Components/ShooterPawnExtensionComponent.cpp` |
+| 引擎生命周期回调和 Pawn 表现 | `Source/ShooterGame/Private/Character/PlayerCharacter.cpp` |
+| ASC 初始化与重生状态重置 | `Source/ShooterGame/Private/PlayerState/ShooterPlayerState.cpp` |
+| 死亡消息和重生规则 | `Source/ShooterGame/Private/GameMode/ShooterGameMode.cpp` |
+| Equipment 重建/解绑 | `Source/ShooterGame/Private/Components/ShooterWeaponEquipmentComponent.cpp` |
+
+## 验证状态
+
+| 日期 / 场景 | 结果 | 范围与证据 |
+|---|---|---|
+| 2026-10-04，UE 5.7.4 Editor/Game Development 构建 | PASS | 固定武器最终版本构建成功；`Saved/Validation/20261004-fixed-weapon/Build-Editor-final.log` 与 `Build-Game-final.log` |
+| 2026-10-05，开发者游戏内手动验证 | 开发者确认无异常 | 当前固定武器出生/重生阶段；未提供具体拓扑、人数、重生次数和证据文件，不据此声明 Steam、弱网或完整 Seamless Travel 已通过 |
+| Steam 好友跨设备、弱网、Dedicated Server、完整 Seamless Travel | 待分别验证 | 当前阶段反馈没有单独覆盖说明 |
+
+### 固定武器契约
+
+- Equipment 在存活 Pawn 的 ASC/组件绑定完成、Combat 死亡阻塞解除后，服务器从 `DefaultWeaponDefinition` 授予并装备一把 Hitscan 武器；原生默认值为现有 `DA_Weapon_AK47`。
+- 重复初始化沿用当前装备 Actor，不重复添加库存。Inventory 和 Equipment 的必要依赖仍保留。
+- 死亡销毁权威武器、移除对应库存项并清理 transient WeaponInstance，不生成掉落；重生重新初始化默认弹药数据，扣弹与预测尚未实现。
+- 客户端解绑或死亡只隐藏/解绑表现与清理缓存，不主动清空服务器复制的 `EquippedWeapon`、`EquippedItemId`；恢复存活状态后刷新表现。
+- 拾取、切槽位和丢弃入口停用，旧交互类型与资源留待下一阶段解除引用后删除。
+
+### 后续验证方式
+
+不再新增自动化 test 或 smoke 脚本；相关现有测试代码与脚本已删除。验证采用必要的 UE 构建检查和开发者游戏内手动验证。
+
+Gameplay 改动后，在 GameLevel 检查出生自动持枪、双方移动/开火造成伤害、死亡不掉落、连续重生后的输入/Health/武器恢复，以及武器 Actor 是否累积。记录实际拓扑、人数、步骤、结果和证据路径；Steam、弱网与 Travel 使用各自的实际运行结果，不由本地验证推断通过。

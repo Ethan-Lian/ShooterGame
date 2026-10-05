@@ -10,6 +10,7 @@
 #include "Components/ShooterInventoryComponent.h"
 #include "Components/ShooterMovementStateComponent.h"
 #include "Components/ShooterWeaponInteractionComponent.h"
+#include "Components/ShooterPawnExtensionComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
@@ -48,6 +49,7 @@ APlayerCharacter::APlayerCharacter()
 	MovementStateComponent = CreateDefaultSubobject<UShooterMovementStateComponent>(TEXT("MovementStateComponent"));
 	WeaponEquipmentComponent = CreateDefaultSubobject<UShooterWeaponEquipmentComponent>(TEXT("WeaponEquipmentComponent"));
 	WeaponInteractionComponent = CreateDefaultSubobject<UShooterWeaponInteractionComponent>(TEXT("WeaponInteractionComponent"));
+	PawnExtensionComponent = CreateDefaultSubobject<UShooterPawnExtensionComponent>(TEXT("PawnExtensionComponent"));
 	
 	OverheadWidget = CreateDefaultSubobject<UWidgetComponent>(FName("OverheadWidget"));
 	OverheadWidget->SetupAttachment(GetRootComponent());
@@ -158,13 +160,46 @@ void APlayerCharacter::HandleShooterAimStateChanged(bool bIsNowAiming)
 void APlayerCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
-	InitializeAbilitySystemActorInfo();
 }
 
 void APlayerCharacter::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
-	InitializeAbilitySystemActorInfo();
+	if (PawnExtensionComponent != nullptr)
+	{
+		PawnExtensionComponent->CheckDefaultInitialization();
+	}
+}
+
+void APlayerCharacter::UnPossessed()
+{
+	if (PawnExtensionComponent != nullptr)
+	{
+		PawnExtensionComponent->UninitializePawn();
+	}
+	Super::UnPossessed();
+}
+
+void APlayerCharacter::OnRep_Controller()
+{
+	Super::OnRep_Controller();
+}
+
+void APlayerCharacter::NotifyControllerChanged()
+{
+	Super::NotifyControllerChanged();
+
+	if (PawnExtensionComponent != nullptr)
+	{
+		if (Controller == nullptr)
+		{
+			PawnExtensionComponent->UninitializePawn();
+		}
+		else
+		{
+			PawnExtensionComponent->HandleControllerChanged();
+		}
+	}
 }
 
 void APlayerCharacter::BeginPlay()
@@ -175,80 +210,31 @@ void APlayerCharacter::BeginPlay()
 	{
 		HealthComponent->OnHealthChanged.AddUniqueDynamic(this, &APlayerCharacter::HandleHealthChanged);
 	}
+
+	if (PawnExtensionComponent != nullptr)
+	{
+		PawnExtensionComponent->CheckDefaultInitialization();
+	}
+}
+
+void APlayerCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (HealthComponent != nullptr)
+	{
+		HealthComponent->OnHealthChanged.RemoveDynamic(this, &APlayerCharacter::HandleHealthChanged);
+	}
+
+	if (PawnExtensionComponent != nullptr)
+	{
+		PawnExtensionComponent->UninitializePawn();
+	}
+
+	Super::EndPlay(EndPlayReason);
 }
 
 AShooterPlayerState* APlayerCharacter::GetShooterPlayerState() const
 {
 	return GetPlayerState<AShooterPlayerState>();
-}
-
-void APlayerCharacter::InitializeAbilitySystemActorInfo()
-{
-	AShooterPlayerState* ShooterPlayerState = GetShooterPlayerState();
-	if (ShooterPlayerState == nullptr)
-	{
-		return;
-	}
-
-	ShooterPlayerState->InitializeAbilitySystem(this);
-
-	if (HealthComponent != nullptr)
-	{
-		HealthComponent->InitializeWithAbilitySystem(ShooterPlayerState->GetAbilitySystemComponent());
-	}
-
-	if (MovementStateComponent != nullptr)
-	{
-		MovementStateComponent->InitializeWithAbilitySystem(ShooterPlayerState->GetAbilitySystemComponent());
-	}
-
-	BindDeathStateTagListener(ShooterPlayerState->GetAbilitySystemComponent());
-
-	if (IsLocallyControlled())
-	{
-		if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
-		{
-			if (AShooterHUD* ShooterHUD = PlayerController->GetHUD<AShooterHUD>())
-			{
-				ShooterHUD->SetObservedPawn(this);
-			}
-		}
-	}
-}
-
-void APlayerCharacter::BindDeathStateTagListener(UAbilitySystemComponent* AbilitySystemComponent)
-{
-	if (BoundDeathStateAbilitySystemComponent.Get() == AbilitySystemComponent && DeathStateTagChangedDelegateHandle.IsValid())
-	{
-		return;
-	}
-
-	if (UAbilitySystemComponent* BoundAbilitySystemComponent = BoundDeathStateAbilitySystemComponent.Get())
-	{
-		if (DeathStateTagChangedDelegateHandle.IsValid())
-		{
-			BoundAbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_Dead).Remove(DeathStateTagChangedDelegateHandle);
-		}
-	}
-
-	BoundDeathStateAbilitySystemComponent = AbilitySystemComponent;
-	DeathStateTagChangedDelegateHandle.Reset();
-
-	if (AbilitySystemComponent == nullptr)
-	{
-		return;
-	}
-
-	DeathStateTagChangedDelegateHandle = AbilitySystemComponent->RegisterGameplayTagEvent(
-		TAG_State_Dead,
-		EGameplayTagEventType::NewOrRemoved).AddUObject(
-			this,
-			&APlayerCharacter::HandleDeathStateTagChanged);
-
-	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead))
-	{
-		ApplyDeathPresentation();
-	}
 }
 
 void APlayerCharacter::HandleHealthChanged(float OldValue, float NewValue)
@@ -303,10 +289,39 @@ void APlayerCharacter::PlayDeathMontage()
 	}
 }
 
-void APlayerCharacter::HandleDeathStateTagChanged(const FGameplayTag Tag, int32 NewCount)
+void APlayerCharacter::RestoreAlivePresentation()
 {
-	if (Tag == TAG_State_Dead && NewCount > 0)
+	bDeathHandled = false;
+
+	if (DeathMontage != nullptr && GetMesh() != nullptr)
 	{
-		ApplyDeathPresentation();
+		if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+		{
+			AnimInstance->Montage_Stop(0.1f, DeathMontage);
+		}
 	}
+
+	if (CombatComponent != nullptr)
+	{
+		CombatComponent->HandleOwnerRespawn();
+	}
+
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->SetMovementMode(MOVE_Walking);
+	}
+
+	if (UCapsuleComponent* CharacterCapsule = GetCapsuleComponent())
+	{
+		CharacterCapsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}
+
+	if (IsLocallyControlled())
+	{
+		if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
+		{
+			EnableInput(PlayerController);
+		}
+	}
+
 }

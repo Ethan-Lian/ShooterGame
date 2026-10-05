@@ -1,6 +1,5 @@
 #include "Animation/ShooterAnimInstance.h"
 #include "Character/PlayerCharacter.h"
-#include "Components/ShooterCombatComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 void UShooterAnimInstance::NativeInitializeAnimation()
