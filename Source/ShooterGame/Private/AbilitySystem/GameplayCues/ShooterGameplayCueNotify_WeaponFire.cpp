@@ -1,11 +1,14 @@
 #include "AbilitySystem/GameplayCues/ShooterGameplayCueNotify_WeaponFire.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
+#include "NiagaraComponent.h"
 #include "ShooterGame.h"
 #include "Weapon/ShooterWeaponBase.h"
 #include "Weapon/WeaponDataAsset.h"
+#include "Character/PlayerCharacter.h"
 
 UShooterGameplayCueNotify_WeaponFire::UShooterGameplayCueNotify_WeaponFire()
 {
@@ -15,6 +18,10 @@ UShooterGameplayCueNotify_WeaponFire::UShooterGameplayCueNotify_WeaponFire()
 bool UShooterGameplayCueNotify_WeaponFire::OnExecute_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters) const
 {
 	Super::OnExecute_Implementation(MyTarget, Parameters);
+	if (APlayerCharacter* Pawn = Cast<APlayerCharacter>(Parameters.Instigator.Get()))
+	{
+		Pawn->PlayFirstPersonFire();
+	}
 
 	AShooterWeaponBase* Weapon = nullptr;
 	UStaticMeshComponent* WeaponMesh = nullptr;
@@ -37,17 +44,43 @@ bool UShooterGameplayCueNotify_WeaponFire::OnExecute_Implementation(AActor* MyTa
 		return false;
 	}
 
+	USceneComponent* CueMesh = WeaponMesh;
+	FName CueSocket = FireConfig.MuzzleSocketName;
+	FRotator CueRotation = FRotator::ZeroRotator;
+	bool bFirstPersonCue = false;
+	if (APlayerCharacter* Pawn = Cast<APlayerCharacter>(Parameters.Instigator.Get());
+		Pawn != nullptr && Pawn->IsLocallyControlled() && Pawn->GetFirstPersonWeapon()->IsVisible())
+	{
+		CueMesh = Pawn->GetFirstPersonWeapon();
+		CueSocket = TEXT("FP_Muzzle");
+		// The existing flash emits along +Z; the template rifle's barrel is +Y.
+		CueRotation = FRotator(0.f, 0.f, 90.f);
+		bFirstPersonCue = true;
+	}
 	bool bSpawnedCueEffect = false;
 	if (FireConfig.MuzzleFlashEffect != nullptr)
 	{
-		UNiagaraFunctionLibrary::SpawnSystemAttached(
+		UNiagaraComponent* Effect = UNiagaraFunctionLibrary::SpawnSystemAttached(
 			FireConfig.MuzzleFlashEffect,
-			WeaponMesh,
-			FireConfig.MuzzleSocketName,
+			CueMesh,
+			CueSocket,
 			FVector::ZeroVector,
-			FRotator::ZeroRotator,
+			CueRotation,
 			EAttachLocation::SnapToTarget,
-			true);
+			true,
+			false);
+		if (Effect != nullptr)
+		{
+			if (bFirstPersonCue)
+			{
+				Effect->SetFirstPersonPrimitiveType(EFirstPersonPrimitiveType::FirstPerson);
+				Effect->SetOnlyOwnerSee(true);
+				// The world-scale example obscures the view at first-person distance.
+				Effect->SetVariableFloat(TEXT("User.Global Scale"), 0.08f);
+				Effect->SetVariableBool(TEXT("User.Use Smoke"), false);
+			}
+			Effect->Activate();
+		}
 		bSpawnedCueEffect = true;
 	}
 
@@ -55,8 +88,8 @@ bool UShooterGameplayCueNotify_WeaponFire::OnExecute_Implementation(AActor* MyTa
 	{
 		UGameplayStatics::SpawnSoundAttached(
 			FireConfig.FireSound,
-			WeaponMesh,
-			FireConfig.MuzzleSocketName,
+			CueMesh,
+			CueSocket,
 			FVector::ZeroVector,
 			FRotator::ZeroRotator,
 			EAttachLocation::SnapToTarget);

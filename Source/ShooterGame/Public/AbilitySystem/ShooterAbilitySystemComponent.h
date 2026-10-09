@@ -11,4 +11,5 @@ class SHOOTERGAME_API UShooterAbilitySystemComponent : public UAbilitySystemComp
 public:
 	void AbilityInputTagPressed(FGameplayTag InputTag);
 	void AbilityInputTagReleased(FGameplayTag InputTag);
+	void ClearAbilityInput();
 };

@@ -2,54 +2,31 @@
 
 #include "Controller/ShooterPlayerController.h"
 
+#include "AbilitySystemComponent.h"
+#include "AbilitySystem/ShooterAbilitySystemComponent.h"
+#include "AbilitySystem/ShooterGameplayTags.h"
 #include "Character/PlayerCharacter.h"
-#include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Components/ShooterCombatComponent.h"
+#include "Components/ShooterMovementStateComponent.h"
+#include "GameFramework/Character.h"
 #include "HUD/ShooterHUD.h"
-#include "InputAction.h"
+#include "Input/ShooterInputConfig.h"
+#include "Input/ShooterInputComponent.h"
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
+#include "Interfaces/ShooterCombatInterface.h"
 #include "ShooterGame.h"
 #include "UObject/ConstructorHelpers.h"
 
 AShooterPlayerController::AShooterPlayerController()
 {
-	static ConstructorHelpers::FObjectFinder<UInputMappingContext> MappingContextRef(
-		TEXT("/Game/ShooterGameContent/Input/IMC_Shootergame.IMC_Shootergame"));
-	static ConstructorHelpers::FObjectFinder<UInputAction> MoveActionRef(
-		TEXT("/Game/ShooterGameContent/Input/Actions/IA_Move.IA_Move"));
-	static ConstructorHelpers::FObjectFinder<UInputAction> LookActionRef(
-		TEXT("/Game/ShooterGameContent/Input/Actions/IA_Look.IA_Look"));
-	static ConstructorHelpers::FObjectFinder<UInputAction> FireActionRef(
-		TEXT("/Game/ShooterGameContent/Input/Actions/IA_Fire.IA_Fire"));
-	static ConstructorHelpers::FObjectFinder<UInputAction> JumpActionRef(
-		TEXT("/Game/ShooterGameContent/Input/Actions/IA_Jump.IA_Jump"));
-
-	if (MappingContextRef.Succeeded())
+	static ConstructorHelpers::FObjectFinder<UShooterInputConfig> DefaultInputConfig(
+		TEXT("/Game/ShooterGameContent/DataConfig/DA_ShooterInputConfig.DA_ShooterInputConfig"));
+	if (DefaultInputConfig.Succeeded())
 	{
-		DefaultMappingContext = MappingContextRef.Object;
+		InputConfig = DefaultInputConfig.Object;
 	}
-
-	if (MoveActionRef.Succeeded())
-	{
-		MoveAction = MoveActionRef.Object;
-	}
-
-	if (LookActionRef.Succeeded())
-	{
-		LookAction = LookActionRef.Object;
-	}
-
-	if (FireActionRef.Succeeded())
-	{
-		FireAction = FireActionRef.Object;
-	}
-
-	if (JumpActionRef.Succeeded())
-	{
-		JumpAction = JumpActionRef.Object;
-	}
-
 }
 
 void AShooterPlayerController::BeginPlay()
@@ -70,6 +47,12 @@ void AShooterPlayerController::BeginPlay()
 		return;
 	}
 
+	if (InputConfig == nullptr)
+	{
+		UE_LOG(LogShooterGame, Warning, TEXT("%s has no InputConfig assigned."), *GetName());
+		return;
+	}
+
 	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
 	if (InputSubsystem == nullptr)
 	{
@@ -77,20 +60,12 @@ void AShooterPlayerController::BeginPlay()
 		return;
 	}
 
-	EnsureRuntimeInputBindings();
-
-	if (DefaultMappingContext != nullptr)
+	for (const UInputMappingContext* MappingContext : InputConfig->MappingContexts)
 	{
-		InputSubsystem->AddMappingContext(DefaultMappingContext, 0);
-	}
-	else
-	{
-		UE_LOG(LogShooterGame, Warning, TEXT("%s has no DefaultMappingContext assigned."), *GetName());
-	}
-
-	if (RuntimeInputMappingContext != nullptr)
-	{
-		InputSubsystem->AddMappingContext(RuntimeInputMappingContext, 1);
+		if (MappingContext != nullptr)
+		{
+			InputSubsystem->AddMappingContext(MappingContext, InputConfig->MappingPriority);
+		}
 	}
 }
 
@@ -98,110 +73,46 @@ void AShooterPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 
-	UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent);
-	if (EnhancedInputComponent == nullptr)
+	UShooterInputComponent* ShooterInputComponent = Cast<UShooterInputComponent>(InputComponent);
+	if (ShooterInputComponent == nullptr)
 	{
-		UE_LOG(LogShooterGame, Error, TEXT("%s requires an EnhancedInputComponent."), *GetName());
+		UE_LOG(LogShooterGame, Error, TEXT("%s requires UShooterInputComponent."), *GetName());
 		return;
 	}
 
-	if (MoveAction != nullptr)
+	ShooterInputComponent->RemoveBinds(InputBindHandles);
+
+	if (InputConfig == nullptr)
 	{
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AShooterPlayerController::HandleMove);
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &AShooterPlayerController::HandleMoveCompleted);
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Canceled, this, &AShooterPlayerController::HandleMoveCompleted);
+		UE_LOG(LogShooterGame, Warning, TEXT("%s cannot bind input because no InputConfig is assigned."), *GetName());
+		return;
 	}
 
-	if (LookAction != nullptr)
-	{
-		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AShooterPlayerController::HandleLook);
-	}
-
-	if (FireAction != nullptr)
-	{
-		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &AShooterPlayerController::HandleFireStarted);
-		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this, &AShooterPlayerController::HandleFireCompleted);
-	}
-
-	if (JumpAction != nullptr)
-	{
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AShooterPlayerController::HandleJumpStarted);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &AShooterPlayerController::HandleJumpCompleted);
-	}
-
-	if (AimAction != nullptr)
-	{
-		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &AShooterPlayerController::HandleAimStarted);
-		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &AShooterPlayerController::HandleAimCompleted);
-		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Canceled, this, &AShooterPlayerController::HandleAimCompleted);
-	}
-
-	if (CrouchAction != nullptr)
-	{
-		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &AShooterPlayerController::HandleCrouchStarted);
-		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &AShooterPlayerController::HandleCrouchCompleted);
-		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Canceled, this, &AShooterPlayerController::HandleCrouchCompleted);
-	}
-
-	if (SprintAction != nullptr)
-	{
-		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &AShooterPlayerController::HandleSprintStarted);
-		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &AShooterPlayerController::HandleSprintCompleted);
-		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Canceled, this, &AShooterPlayerController::HandleSprintCompleted);
-	}
-
-	if (PickupWeaponAction != nullptr)
-	{
-		EnhancedInputComponent->BindAction(PickupWeaponAction, ETriggerEvent::Started, this, &AShooterPlayerController::HandlePickupStarted);
-	}
-
-	if (DropWeaponAction != nullptr)
-	{
-		EnhancedInputComponent->BindAction(DropWeaponAction, ETriggerEvent::Started, this, &AShooterPlayerController::HandleDropStarted);
-	}
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Move, ETriggerEvent::Triggered, this, &AShooterPlayerController::HandleMove, InputBindHandles);
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Move, ETriggerEvent::Completed, this, &AShooterPlayerController::HandleMoveCompleted, InputBindHandles);
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Move, ETriggerEvent::Canceled, this, &AShooterPlayerController::HandleMoveCompleted, InputBindHandles);
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Look, ETriggerEvent::Triggered, this, &AShooterPlayerController::HandleLook, InputBindHandles);
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Jump, ETriggerEvent::Started, this, &AShooterPlayerController::HandleJumpStarted, InputBindHandles);
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Jump, ETriggerEvent::Completed, this, &AShooterPlayerController::HandleJumpCompleted, InputBindHandles);
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Jump, ETriggerEvent::Canceled, this, &AShooterPlayerController::HandleJumpCompleted, InputBindHandles);
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Aim, ETriggerEvent::Started, this, &AShooterPlayerController::HandleAimStarted, InputBindHandles);
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Aim, ETriggerEvent::Completed, this, &AShooterPlayerController::HandleAimCompleted, InputBindHandles);
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Aim, ETriggerEvent::Canceled, this, &AShooterPlayerController::HandleAimCompleted, InputBindHandles);
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Crouch, ETriggerEvent::Started, this, &AShooterPlayerController::HandleCrouchStarted, InputBindHandles);
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Crouch, ETriggerEvent::Completed, this, &AShooterPlayerController::HandleCrouchCompleted, InputBindHandles);
+	ShooterInputComponent->BindNativeAction(InputConfig, TAG_Input_Crouch, ETriggerEvent::Canceled, this, &AShooterPlayerController::HandleCrouchCompleted, InputBindHandles);
+	ShooterInputComponent->BindAbilityActions(
+		InputConfig,
+		this,
+		&AShooterPlayerController::HandleAbilityInputPressed,
+		&AShooterPlayerController::HandleAbilityInputReleased,
+		InputBindHandles);
 }
 
 void AShooterPlayerController::SetPawn(APawn* InPawn)
 {
 	Super::SetPawn(InPawn);
 	NotifyHUDObservedPawnChanged();
-}
-
-void AShooterPlayerController::EnsureRuntimeInputBindings()
-{
-	if (RuntimeInputMappingContext == nullptr)
-	{
-		RuntimeInputMappingContext = NewObject<UInputMappingContext>(this, TEXT("RuntimeInputMappingContext"));
-	}
-
-	if (PickupWeaponAction == nullptr)
-	{
-		PickupWeaponAction = NewObject<UInputAction>(this, TEXT("RuntimePickupWeaponAction"));
-		PickupWeaponAction->ValueType = EInputActionValueType::Boolean;
-	}
-
-	if (DropWeaponAction == nullptr)
-	{
-		DropWeaponAction = NewObject<UInputAction>(this, TEXT("RuntimeDropWeaponAction"));
-		DropWeaponAction->ValueType = EInputActionValueType::Boolean;
-	}
-
-	if (AimAction == nullptr)
-	{
-		AimAction = NewObject<UInputAction>(this, TEXT("RuntimeAimAction"));
-		AimAction->ValueType = EInputActionValueType::Boolean;
-	}
-
-	if (CrouchAction == nullptr)
-	{
-		CrouchAction = NewObject<UInputAction>(this, TEXT("RuntimeCrouchAction"));
-		CrouchAction->ValueType = EInputActionValueType::Boolean;
-	}
-
-	EnsureActionMapped(RuntimeInputMappingContext, PickupWeaponAction, EKeys::F);
-	EnsureActionMapped(RuntimeInputMappingContext, DropWeaponAction, EKeys::Q);
-	EnsureActionMapped(RuntimeInputMappingContext, AimAction, EKeys::RightMouseButton);
-	EnsureActionMapped(RuntimeInputMappingContext, CrouchAction, EKeys::C);
 }
 
 void AShooterPlayerController::NotifyHUDObservedPawnChanged()
@@ -217,42 +128,43 @@ void AShooterPlayerController::NotifyHUDObservedPawnChanged()
 	}
 }
 
-bool AShooterPlayerController::HasActionMapped(const UInputMappingContext* MappingContext, UInputAction* Action, const FKey& Key) const
-{
-	if (MappingContext == nullptr || Action == nullptr)
-	{
-		return false;
-	}
-
-	for (const FEnhancedActionKeyMapping& Mapping : MappingContext->GetMappings())
-	{
-		if (Mapping.Action == Action && Mapping.Key == Key)
-		{
-			return true;
-		}
-	}
-
-	return false;
-}
-
-void AShooterPlayerController::EnsureActionMapped(UInputMappingContext* MappingContext, UInputAction* Action, const FKey& Key) const
-{
-	if (MappingContext == nullptr || Action == nullptr)
-	{
-		return;
-	}
-
-	if (HasActionMapped(DefaultMappingContext, Action, Key) || HasActionMapped(MappingContext, Action, Key))
-	{
-		return;
-	}
-
-	MappingContext->MapKey(Action, Key);
-}
-
 APlayerCharacter* AShooterPlayerController::GetPlayerCharacter() const
 {
 	return Cast<APlayerCharacter>(GetPawn());
+}
+
+ACharacter* AShooterPlayerController::GetControlledCharacter() const
+{
+	return Cast<ACharacter>(GetPawn());
+}
+
+UAbilitySystemComponent* AShooterPlayerController::GetControlledAbilitySystemComponent() const
+{
+	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetPawn());
+	return CombatOwner != nullptr ? CombatOwner->GetShooterAbilitySystemComponent() : nullptr;
+}
+
+UShooterAbilitySystemComponent* AShooterPlayerController::GetControlledShooterAbilitySystemComponent() const
+{
+	return Cast<UShooterAbilitySystemComponent>(GetControlledAbilitySystemComponent());
+}
+
+UShooterCombatComponent* AShooterPlayerController::GetControlledCombatComponent() const
+{
+	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetPawn());
+	return CombatOwner != nullptr ? CombatOwner->GetShooterCombatComponent() : nullptr;
+}
+
+UShooterMovementStateComponent* AShooterPlayerController::GetControlledMovementStateComponent() const
+{
+	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetPawn());
+	return CombatOwner != nullptr ? CombatOwner->GetShooterMovementStateComponent() : nullptr;
+}
+
+bool AShooterPlayerController::IsControlledPawnDead() const
+{
+	const UAbilitySystemComponent* AbilitySystemComponent = GetControlledAbilitySystemComponent();
+	return AbilitySystemComponent != nullptr && AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead);
 }
 
 void AShooterPlayerController::HandleMove(const FInputActionValue& InputValue)
@@ -279,98 +191,148 @@ void AShooterPlayerController::HandleLook(const FInputActionValue& InputValue)
 	}
 }
 
-void AShooterPlayerController::HandleFireStarted()
+void AShooterPlayerController::HandleAbilityInputPressed(FGameplayTag InputTag)
 {
-	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())
+	if (InputTag == TAG_Input_Reload)
 	{
-		PlayerCharacter->StartFireInput();
+		if (UShooterCombatComponent* Combat = GetControlledCombatComponent())
+		{
+			Combat->StartReloadInput();
+		}
+		return;
+	}
+	if (InputTag == TAG_Input_Fire)
+	{
+		if (UShooterCombatComponent* CombatComponent = GetControlledCombatComponent())
+		{
+			CombatComponent->StartFireInput();
+		}
+		return;
+	}
+
+	if (InputTag == TAG_Input_Sprint)
+	{
+		if (UShooterMovementStateComponent* MovementStateComponent = GetControlledMovementStateComponent())
+		{
+			MovementStateComponent->StartSprintInput();
+		}
+		return;
+	}
+
+	if (UShooterAbilitySystemComponent* ShooterASC = GetControlledShooterAbilitySystemComponent())
+	{
+		ShooterASC->AbilityInputTagPressed(InputTag);
 	}
 }
 
-void AShooterPlayerController::HandleFireCompleted()
+void AShooterPlayerController::HandleAbilityInputReleased(FGameplayTag InputTag)
 {
-	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())
+	if (InputTag == TAG_Input_Fire)
 	{
-		PlayerCharacter->StopFireInput();
+		if (UShooterCombatComponent* CombatComponent = GetControlledCombatComponent())
+		{
+			CombatComponent->StopFireInput();
+		}
+		return;
+	}
+
+	if (InputTag == TAG_Input_Sprint)
+	{
+		if (UShooterMovementStateComponent* MovementStateComponent = GetControlledMovementStateComponent())
+		{
+			MovementStateComponent->StopSprintInput();
+		}
+		return;
+	}
+
+	if (UShooterAbilitySystemComponent* ShooterASC = GetControlledShooterAbilitySystemComponent())
+	{
+		ShooterASC->AbilityInputTagReleased(InputTag);
 	}
 }
 
 void AShooterPlayerController::HandleJumpStarted()
 {
-	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())
+	if (!IsControlledPawnDead())
 	{
-		PlayerCharacter->StartJumpInput();
+		if (ACharacter* ControlledCharacter = GetControlledCharacter())
+		{
+			ControlledCharacter->Jump();
+		}
 	}
 }
 
 void AShooterPlayerController::HandleJumpCompleted()
 {
-	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())
+	if (!IsControlledPawnDead())
 	{
-		PlayerCharacter->StopJumpInput();
+		if (ACharacter* ControlledCharacter = GetControlledCharacter())
+		{
+			ControlledCharacter->StopJumping();
+		}
 	}
 }
 
 void AShooterPlayerController::HandleAimStarted()
 {
-	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())
+	if (IsControlledPawnDead())
 	{
-		PlayerCharacter->StartAimInput();
+		return;
+	}
+
+	if (UShooterMovementStateComponent* MovementStateComponent = GetControlledMovementStateComponent())
+	{
+		if (MovementStateComponent->IsSprinting())
+		{
+			MovementStateComponent->StopSprintInput();
+		}
+	}
+
+	if (UShooterCombatComponent* CombatComponent = GetControlledCombatComponent())
+	{
+		CombatComponent->StartAimInput();
 	}
 }
 
 void AShooterPlayerController::HandleAimCompleted()
 {
-	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())
+	if (!IsControlledPawnDead())
 	{
-		PlayerCharacter->StopAimInput();
+		if (UShooterCombatComponent* CombatComponent = GetControlledCombatComponent())
+		{
+			CombatComponent->StopAimInput();
+		}
 	}
 }
 
 void AShooterPlayerController::HandleCrouchStarted()
 {
-	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())
+	if (IsControlledPawnDead())
 	{
-		PlayerCharacter->StartCrouchInput();
+		return;
+	}
+
+	if (UShooterMovementStateComponent* MovementStateComponent = GetControlledMovementStateComponent())
+	{
+		if (MovementStateComponent->IsSprinting())
+		{
+			MovementStateComponent->StopSprintInput();
+		}
+	}
+
+	if (ACharacter* ControlledCharacter = GetControlledCharacter())
+	{
+		ControlledCharacter->Crouch();
 	}
 }
 
 void AShooterPlayerController::HandleCrouchCompleted()
 {
-	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())
+	if (!IsControlledPawnDead())
 	{
-		PlayerCharacter->StopCrouchInput();
-	}
-}
-
-void AShooterPlayerController::HandleSprintStarted()
-{
-	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())
-	{
-		PlayerCharacter->StartSprintInput();
-	}
-}
-
-void AShooterPlayerController::HandleSprintCompleted()
-{
-	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())
-	{
-		PlayerCharacter->StopSprintInput();
-	}
-}
-
-void AShooterPlayerController::HandlePickupStarted()
-{
-	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())
-	{
-		PlayerCharacter->StartPickupInput();
-	}
-}
-
-void AShooterPlayerController::HandleDropStarted()
-{
-	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())
-	{
-		PlayerCharacter->StartDropInput();
+		if (ACharacter* ControlledCharacter = GetControlledCharacter())
+		{
+			ControlledCharacter->UnCrouch();
+		}
 	}
 }

@@ -3,10 +3,8 @@
 #include "Components/ActorComponent.h"
 #include "ShooterCombatComponent.generated.h"
 
-class APlayerCharacter;
 class UAbilitySystemComponent;
 class UShooterWeaponEquipmentComponent;
-class UShooterWeaponInteractionComponent;
 
 UCLASS(ClassGroup = (ShooterGame), Blueprintable, BlueprintType, meta = (BlueprintSpawnableComponent))
 class SHOOTERGAME_API UShooterCombatComponent : public UActorComponent
@@ -42,18 +40,37 @@ public:
 	// Flushes combat state during death handling and returns whether fire input changed.
 	bool HandleOwnerDeath();
 
+	// Clears the local death latch when this component is reused by a live pawn.
+	void HandleOwnerRespawn();
+
+	// Clears transient input and targeting state when the owning Pawn is unpossessed or destroyed.
+	void UninitializeForPawn();
+
+	// Returns whether the fire input is currently held by this component.
+	bool IsFireInputPressed() const { return bIsFireInputPressed; }
+	bool IsReloading() const { return ReloadStartServerTime >= 0.f; }
+	void StartReloadInput();
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 private:
-	// Resolves the typed owning character helper.
-	APlayerCharacter* GetOwningPlayerCharacter() const;
+	void BeginReload();
+	void FinishReload();
+	void CancelReload();
+	UFUNCTION()
+	void OnRep_ReloadStartServerTime();
+	UFUNCTION(Server, Reliable)
+	void ServerReload();
+
+	UPROPERTY(ReplicatedUsing = OnRep_ReloadStartServerTime)
+	float ReloadStartServerTime = -1.f;
+	FTimerHandle ReloadTimer;
+	int32 ReloadItemId = INDEX_NONE;
 
 	// Resolves the owning character's PlayerState-hosted ASC.
 	UAbilitySystemComponent* GetOwningAbilitySystemComponent() const;
 
 	// Resolves the component that owns the equipped weapon and equip/drop logic.
 	UShooterWeaponEquipmentComponent* GetOwningWeaponEquipmentComponent() const;
-
-	// Resolves the component that owns local pickup targeting and view traces.
-	UShooterWeaponInteractionComponent* GetOwningWeaponInteractionComponent() const;
 
 	// Activates the startup fire ability on the authority path.
 	void HandleFireInputPressed();

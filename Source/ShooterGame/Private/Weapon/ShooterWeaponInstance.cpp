@@ -1,17 +1,16 @@
 #include "Weapon/ShooterWeaponInstance.h"
 
-#include "Weapon/ShooterWeaponBase.h"
+#include "Weapon/ShooterWeaponEquipmentActor.h"
 
-void UShooterWeaponInstance::InitializeFromInventoryEntry(const FWeaponInventoryEntry& SourceEntry, AShooterWeaponBase* InEquippedWeaponActor)
+void UShooterWeaponInstance::InitializeFromInventoryEntry(const FWeaponInventoryEntry& SourceEntry, AShooterWeaponEquipmentActor* InEquippedWeaponActor)
 {
 	ItemId = SourceEntry.ItemId;
-	SlotIndex = SourceEntry.SlotIndex;
 	WeaponDefinition = SourceEntry.WeaponDefinition;
 	FireConfig = FWeaponFireConfig();
 	AmmoConfig = FWeaponAmmoConfig();
 	CharacterAttachSocketName = NAME_None;
 	WeaponMeshRelativeTransform = FTransform::Identity;
-	WeaponActorClass = SourceEntry.WeaponActorClass;
+	EquipmentActorClass = SourceEntry.EquipmentActorClass;
 	EquippedWeaponActor = InEquippedWeaponActor;
 	CurrentMagazineAmmo = SourceEntry.CurrentMagazineAmmo;
 	CurrentReserveAmmo = SourceEntry.CurrentReserveAmmo;
@@ -25,11 +24,6 @@ void UShooterWeaponInstance::InitializeFromInventoryEntry(const FWeaponInventory
 	AmmoConfig = WeaponDefinition->AmmoConfig;
 	CharacterAttachSocketName = WeaponDefinition->CharacterAttachSocketName;
 	WeaponMeshRelativeTransform = WeaponDefinition->WeaponMeshRelativeTransform;
-}
-
-void UShooterWeaponInstance::SetEquippedWeaponActor(AShooterWeaponBase* NewEquippedWeaponActor)
-{
-	EquippedWeaponActor = NewEquippedWeaponActor;
 }
 
 void UShooterWeaponInstance::ClearEquippedWeaponActor()

@@ -49,3 +49,12 @@ void UShooterAbilitySystemComponent::AbilityInputTagReleased(FGameplayTag InputT
 		}
 	}
 }
+
+void UShooterAbilitySystemComponent::ClearAbilityInput()
+{
+	ABILITYLIST_SCOPE_LOCK();
+	for (FGameplayAbilitySpec& Spec : ActivatableAbilities.Items)
+	{
+		Spec.InputPressed = false;
+	}
+}

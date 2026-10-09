@@ -1,101 +1,72 @@
 #include "Menu.h"
-#include "MultiplayerSession/Public/MultiplayerSessionsSubsystem.h"
+#include "MultiplayerSessionUIManagerSubsystem.h"
+#include "Engine/GameInstance.h"
 #include "Components/Button.h"
-#include "OnlineSubsystem.h"
-#include "OnlineSubsystemUtils.h"
+#include "Components/TextBlock.h"
 
-namespace
-{
-	FString GetCurrentSubsystemLabel(const UWorld* World)
-	{
-		if (const IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(World))
-		{
-			return OnlineSubsystem->GetSubsystemName().ToString();
-		}
-
-		return TEXT("None");
-	}
-}
+#define LOCTEXT_NAMESPACE "MultiplayerMenu"
 
 void UMenu::MenuSetup(int32 NumberOfPublicConnections, FString TypeOfMatch, FString Path)
 {
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(
-			-1,
-			10,
-			FColor::Yellow,
-			FString::Printf(TEXT("UMenu::MenuSetup called, OSS=%s"), *GetCurrentSubsystemLabel(GetWorld())));
-	}
-	
+	bIsTearingDown = false;
 	NumPublicConnections = NumberOfPublicConnections;
 	MatchType = TypeOfMatch;
-	LobbyPath = FString::Printf(TEXT("%s?listen"), *Path);
+	LobbyPath = Path;
 	
-	AddToViewport();
-	SetVisibility(ESlateVisibility::Visible);
-	SetIsFocusable(true);
-	
-	UWorld* World = GetWorld();
-	if (World)
+	if (UMultiplayerSessionUIManagerSubsystem* UIManagerSubsystem = GetUIManagerSubsystem())
 	{
-		APlayerController* PlayerController = World->GetFirstPlayerController();
-		if (PlayerController)
-		{
-			FInputModeUIOnly InputModeData;
-			InputModeData.SetWidgetToFocus(TakeWidget());
-			InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-			PlayerController->SetInputMode(InputModeData);
-			PlayerController->SetShowMouseCursor(true);
-		}
+		UIManagerSubsystem->ShowMenu(this);
 	}
 
 	UGameInstance* GameInstance = GetGameInstance();
 	if (GameInstance)
 	{
-		//Subsystem created when GameInstance created
-		MultiplayerSessionsSubsystem = GameInstance->GetSubsystem<UMultiplayerSessionsSubsystem>();
+		SessionFlow = GameInstance->GetSubsystem<UMultiplayerSessionFlowSubsystem>();
 	}
 	
-	if (MultiplayerSessionsSubsystem)
+	if (SessionFlow)
 	{
-		MultiplayerSessionsSubsystem->MultiplayerOnCreateSessionCompleteDelegate.AddDynamic(this,&ThisClass::UMenu::OnCreateSessionComplete);
-		MultiplayerSessionsSubsystem->MultiplayerOnDestroySessionCompleteDelegate.AddDynamic(this, &ThisClass::OnDestroySessionComplete);
-		MultiplayerSessionsSubsystem->MultiplayerOnStartSessionCompleteDelegate.AddDynamic(this, &ThisClass::OnStartSessionComplete);
+		SessionFlow->OnStateChanged.AddUniqueDynamic(this, &ThisClass::HandleFlowStateChanged);
+		HandleFlowStateChanged(SessionFlow->GetState(), SessionFlow->GetLastError());
 	}
 }
 
 void UMenu::MenuTearDown()
 {
-	RemoveFromParent();
-	
-	UWorld* World = GetWorld();
-	if (World)
+	if (bIsTearingDown)
 	{
-		APlayerController* PlayerController  =World->GetFirstPlayerController();
-		if (PlayerController)
-		{
-			FInputModeGameOnly InputModeData;
-			PlayerController->SetInputMode(InputModeData);
-			PlayerController->SetShowMouseCursor(false);
-		}
+		return;
+	}
+
+	bIsTearingDown = true;
+
+	if (SessionFlow)
+	{
+		SessionFlow->OnStateChanged.RemoveDynamic(this, &ThisClass::HandleFlowStateChanged);
+	}
+
+	if (UMultiplayerSessionUIManagerSubsystem* UIManagerSubsystem = GetUIManagerSubsystem())
+	{
+		UIManagerSubsystem->HideMenu(this);
 	}
 }
 
 bool UMenu::Initialize()
 {
 	const bool bSuccess = Super::Initialize();
-	if (!bSuccess) return false;
+	if (!bSuccess)
+	{
+		return false;
+	}
 
 	if (HostButton)
 	{
-		HostButton->OnClicked.AddDynamic(this, &ThisClass::HostButtonClicked);
+		HostButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HostButtonClicked);
+		SetDesiredFocusWidget(HostButton);
 	}
-
-	if (JoinButton)
+	if (RetryButton)
 	{
-		JoinButton->SetIsEnabled(false);
-		JoinButton->SetVisibility(ESlateVisibility::Collapsed);
+		RetryButton->OnClicked.AddUniqueDynamic(this, &ThisClass::RetryButtonClicked);
 	}
 
 	return true;
@@ -103,71 +74,46 @@ bool UMenu::Initialize()
 
 void UMenu::NativeDestruct()
 {
-	Super::NativeDestruct();
-	
 	MenuTearDown();
+	Super::NativeDestruct();
 }
 
 void UMenu::HostButtonClicked()
 {
-	HostButton->SetIsEnabled(false);
-	
-	// if (GEngine)
-	// {
-	// 	GEngine->AddOnScreenDebugMessage(
-	// 		-1,
-	// 		10,
-	// 		FColor::Red,
-	// 		FString::Printf(TEXT("UMenu::HostButtonClicked fired, OSS=%s"), *GetCurrentSubsystemLabel()));
-	// }
-
-	if (MultiplayerSessionsSubsystem)
+	if (SessionFlow)
 	{
-		MultiplayerSessionsSubsystem->CreateSession(NumPublicConnections, MatchType);
-	}
-	else
-	{
-		HostButton->SetIsEnabled(true);
+		SessionFlow->HostGame(NumPublicConnections, MatchType, LobbyPath);
 	}
 }
 
-void UMenu::OnCreateSessionComplete(bool bWasSuccessful)
+void UMenu::HandleFlowStateChanged(EMultiplayerSessionFlowState State, FText Error)
 {
-	if (!bWasSuccessful && HostButton)
+	if (HostButton)
 	{
-		HostButton->SetIsEnabled(true);
+		HostButton->SetIsEnabled(State == EMultiplayerSessionFlowState::Idle && !SessionFlow->IsBusy());
 	}
-
-	// if (GEngine)
-	// {
-	// 	GEngine->AddOnScreenDebugMessage(
-	// 		-1,
-	// 		10.f,
-	// 		bWasSuccessful ? FColor::Green : FColor::Red,
-	// 		FString::Printf(TEXT("OnCreateSessionComplete: %s, OSS=%s, LobbyPath=%s"),
-	// 			bWasSuccessful ? TEXT("Success") : TEXT("Fail"),
-	// 			*GetCurrentSubsystemLabel(),
-	// 			*LobbyPath));
-	// }
-	if (bWasSuccessful)
+	if (StatusText)
 	{
-		if (MultiplayerSessionsSubsystem)
-		{
-			MultiplayerSessionsSubsystem->RequestShowLobbyInvitePanelAfterTravel();
-		}
-		
-		UWorld* World = GetWorld();
-		if (World)
-		{
-			World->ServerTravel(LobbyPath);
-		}
+		StatusText->SetText(!Error.IsEmpty() ? Error : State == EMultiplayerSessionFlowState::Idle
+			? LOCTEXT("Ready", "创建房间后，通过 Steam 邀请好友加入。")
+			: LOCTEXT("Busy", "正在处理联机请求，请稍候…"));
+	}
+	if (RetryButton)
+	{
+		RetryButton->SetVisibility(State == EMultiplayerSessionFlowState::CleanupFailed
+			? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 }
 
-void UMenu::OnDestroySessionComplete(bool bWasSuccessful)
+void UMenu::RetryButtonClicked()
 {
+	SessionFlow->LeaveSession();
 }
 
-void UMenu::OnStartSessionComplete(bool bWasSuccessful)
+UMultiplayerSessionUIManagerSubsystem* UMenu::GetUIManagerSubsystem() const
 {
+	UGameInstance* GameInstance = GetGameInstance();
+	return GameInstance ? GameInstance->GetSubsystem<UMultiplayerSessionUIManagerSubsystem>() : nullptr;
 }
+
+#undef LOCTEXT_NAMESPACE

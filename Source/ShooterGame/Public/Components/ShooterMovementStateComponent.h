@@ -4,7 +4,6 @@
 #include "GameplayEffectTypes.h"
 #include "ShooterMovementStateComponent.generated.h"
 
-class APlayerCharacter;
 class UAbilitySystemComponent;
 
 UCLASS(ClassGroup = (ShooterGame), Blueprintable, BlueprintType, meta = (BlueprintSpawnableComponent))
@@ -30,6 +29,12 @@ public:
 	// Binds movement attributes from the PlayerState-hosted ASC to this avatar's movement component.
 	void InitializeWithAbilitySystem(UAbilitySystemComponent* InAbilitySystemComponent);
 
+	// Removes movement attribute bindings when the owning Pawn is unpossessed or destroyed.
+	void UninitializeFromAbilitySystem();
+
+	// Returns whether this component currently has an ASC binding.
+	bool IsInitializedWithAbilitySystem() const { return AbilitySystemComponent != nullptr; }
+
 	// Returns whether current input is forward-only enough to enter or keep sprinting.
 	UFUNCTION(BlueprintPure, Category = "Shooter|Movement")
 	bool IsSprintDirectionAllowed() const;
@@ -39,9 +44,6 @@ public:
 	bool IsSprinting() const;
 
 private:
-	// Resolves the typed owning character helper.
-	APlayerCharacter* GetOwningPlayerCharacter() const;
-
 	// Returns whether this component is running on the authoritative owner actor.
 	bool IsOwnerAuthority() const;
 
@@ -76,4 +78,7 @@ private:
 	FVector2D LastMoveInput = FVector2D::ZeroVector;
 
 	bool bSprintInputPressed = false;
+
+	float DefaultMaxWalkSpeed = 600.f;
+	bool bDefaultMaxWalkSpeedCaptured = false;
 };

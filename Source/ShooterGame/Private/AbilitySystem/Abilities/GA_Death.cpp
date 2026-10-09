@@ -4,7 +4,7 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/Effects/GE_DeathState.h"
 #include "Character/PlayerCharacter.h"
-#include "GameMode/ShooterGameMode.h"
+#include "Messages/ShooterGameplayMessageSubsystem.h"
 
 UGA_Death::UGA_Death()
 {
@@ -63,14 +63,14 @@ void UGA_Death::ActivateAbility(
 		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*DeathStateSpecHandle.Data.Get());
 	}
 
-	DeadCharacter->BeginDeathPresentation(TriggerEventData);
-
-	if (UWorld* World = GetWorld())
+	if (UShooterGameplayMessageSubsystem* MessageSubsystem = UShooterGameplayMessageSubsystem::Get(this))
 	{
-		if (AShooterGameMode* ShooterGameMode = World->GetAuthGameMode<AShooterGameMode>())
-		{
-			ShooterGameMode->RequestPlayerRespawn(Cast<AController>(DeadCharacter->GetController()), DeadCharacter);
-		}
+		FShooterPlayerDeathMessage DeathMessage;
+		DeathMessage.Channel = TAG_Message_Player_Death;
+		DeathMessage.Controller = Cast<AController>(DeadCharacter->GetController());
+		DeathMessage.DeadPawn = DeadCharacter;
+		DeathMessage.DeathContext = EffectContext;
+		MessageSubsystem->BroadcastPlayerDeath(DeathMessage);
 	}
 
 	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);

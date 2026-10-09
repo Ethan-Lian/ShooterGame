@@ -2,69 +2,50 @@
 
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
+#include "Engine/GameInstance.h"
+
+#define LOCTEXT_NAMESPACE "LobbyFriendRow"
 
 void ULobbyFriendRowWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-
-	if (InviteButton)
-	{
-		InviteButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HandleInviteClicked);
-	}
-
+	InviteButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HandleInviteClicked);
 	RefreshDisplayedFriend();
 }
 
 void ULobbyFriendRowWidget::NativeDestruct()
 {
-	if (InviteButton)
-	{
-		InviteButton->OnClicked.RemoveDynamic(this, &ThisClass::HandleInviteClicked);
-	}
-
+	InviteButton->OnClicked.RemoveDynamic(this, &ThisClass::HandleInviteClicked);
 	Super::NativeDestruct();
 }
 
 void ULobbyFriendRowWidget::SetupFriendRow(const FSteamFriendInviteEntry& InFriendEntry)
 {
 	FriendEntry = InFriendEntry;
+	bInviteSent = false;
 	RefreshDisplayedFriend();
 }
 
 void ULobbyFriendRowWidget::HandleInviteClicked()
 {
-	UMultiplayerSessionsSubsystem* SessionsSubsystem = GetMultiplayerSessionsSubsystem();
-	if (!SessionsSubsystem || FriendEntry.FriendIdString.IsEmpty())
+	ULobbyInviteSubsystem* Invites = GetGameInstance()->GetSubsystem<ULobbyInviteSubsystem>();
+	if (Invites->SendSteamInviteToFriendByIdString(FriendEntry.FriendIdString))
 	{
-		return;
+		bInviteSent = true;
+		RefreshDisplayedFriend();
 	}
-
-	SessionsSubsystem->SendSteamInviteToFriendByIdString(FriendEntry.FriendIdString);
-}
-
-UMultiplayerSessionsSubsystem* ULobbyFriendRowWidget::GetMultiplayerSessionsSubsystem() const
-{
-	const UGameInstance* GameInstance = GetGameInstance();
-	return GameInstance ? GameInstance->GetSubsystem<UMultiplayerSessionsSubsystem>() : nullptr;
 }
 
 void ULobbyFriendRowWidget::RefreshDisplayedFriend()
 {
-	if (NameText)
-	{
-		NameText->SetText(FText::FromString(FriendEntry.DisplayName));
-	}
-
-	if (StatusText)
-	{
-		const FText StatusLabel = FriendEntry.bIsOnline
-			? FText::FromString(TEXT("Online"))
-			: FText::FromString(TEXT("Offline"));
-		const FLinearColor StatusColor = FriendEntry.bIsOnline
-			? FLinearColor(0.25f, 0.9f, 0.45f, 1.0f)
-			: FLinearColor(0.55f, 0.55f, 0.55f, 1.0f);
-
-		StatusText->SetText(StatusLabel);
-		StatusText->SetColorAndOpacity(FSlateColor(StatusColor));
-	}
+	// Setup can precede construction; BindWidget members are initialized by CreateWidget.
+	FriendName->SetText(FText::FromString(FriendEntry.DisplayName));
+	InitialText->SetText(FText::FromString(FriendEntry.DisplayName.Left(1).ToUpper()));
+	PresenceText->SetText(FriendEntry.bIsOnline ? LOCTEXT("Online", "在线") : LOCTEXT("Offline", "离线"));
+	PresenceText->SetColorAndOpacity(FSlateColor(FriendEntry.bIsOnline
+		? FLinearColor(0.24f, 0.78f, 0.64f) : FLinearColor(0.38f, 0.43f, 0.5f)));
+	InviteButton->SetIsEnabled(FriendEntry.bIsOnline && !bInviteSent);
+	InviteLabel->SetText(bInviteSent ? LOCTEXT("Sent", "已发送") : LOCTEXT("Invite", "邀请"));
 }
+
+#undef LOCTEXT_NAMESPACE

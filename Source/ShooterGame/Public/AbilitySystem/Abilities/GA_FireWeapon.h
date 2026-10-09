@@ -3,9 +3,11 @@
 #include "Abilities/GameplayAbility.h"
 #include "GA_FireWeapon.generated.h"
 
-class APlayerCharacter;
+class APawn;
 class AShooterWeaponBase;
+class UAbilityTask_WaitDelay;
 class UAbilitySystemComponent;
+class UGameplayEffect;
 class UShooterWeaponInstance;
 struct FWeaponFireConfig;
 
@@ -33,27 +35,28 @@ public:
 		bool bWasCancelled) override;
 
 private:
-	// Validates the avatar/weapon chain and fires once using the configured weapon mode.
-	void FireSingleShot();
+	// Resolves the currently equipped logical weapon for the avatar.
+	UShooterWeaponInstance* GetEquippedWeaponInstance() const;
+
+	// Commits optional fire cost/cooldown before one shot leaves the weapon.
+	bool CommitFireShot();
+
+	// Validates the avatar/weapon chain and fires one Hitscan shot.
+	bool FireSingleShot();
+
+	// Starts the next delay task for automatic fire.
+	void QueueNextShot(float FireInterval);
 
 	// Resolves the center-screen aim point from the player's authoritative view.
 	bool ResolveAimPoint(
-		const APlayerCharacter* ShooterCharacter,
+		const APawn* ShooterPawn,
 		const AShooterWeaponBase* EquippedWeaponActor,
 		const FWeaponFireConfig& FireConfig,
 		FVector& OutAimPoint) const;
 
 	// Applies immediate damage through a muzzle-to-aim hitscan trace.
 	void FireHitscanShot(
-		APlayerCharacter* ShooterCharacter,
-		AShooterWeaponBase* EquippedWeaponActor,
-		UAbilitySystemComponent* SourceAbilitySystem,
-		const FWeaponFireConfig& FireConfig,
-		const FTransform& MuzzleTransform);
-
-	// Spawns the configured projectile for slower physical weapons.
-	void FireProjectileShot(
-		APlayerCharacter* ShooterCharacter,
+		APawn* ShooterPawn,
 		AShooterWeaponBase* EquippedWeaponActor,
 		UAbilitySystemComponent* SourceAbilitySystem,
 		const FWeaponFireConfig& FireConfig,
@@ -61,14 +64,24 @@ private:
 
 	// Sends the existing fire cue with a direction that matches the gameplay shot.
 	void ExecuteFireCue(
-		APlayerCharacter* ShooterCharacter,
+		APawn* ShooterPawn,
 		AShooterWeaponBase* EquippedWeaponActor,
 		UAbilitySystemComponent* SourceAbilitySystem,
 		const FVector& MuzzleLocation,
 		const FVector& ShotDirection) const;
 
 	// Continues automatic fire using the current weapon config.
+	UFUNCTION()
 	void HandleRepeatedFire();
 
-	FTimerHandle RepeatingFireTimerHandle;
+	// Optional cost GE consumed once for every shot.
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Cost")
+	TSubclassOf<UGameplayEffect> FireCostGameplayEffectClass;
+
+	// Optional cooldown GE applied once for every shot.
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Cooldown")
+	TSubclassOf<UGameplayEffect> FireCooldownGameplayEffectClass;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAbilityTask_WaitDelay> FireDelayTask;
 };

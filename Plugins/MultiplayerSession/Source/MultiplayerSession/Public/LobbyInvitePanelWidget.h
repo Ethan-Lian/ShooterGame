@@ -2,16 +2,16 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "MultiplayerSessionsSubsystem.h"
+#include "LobbyInviteSubsystem.h"
+#include "MultiplayerSessionFlowSubsystem.h"
 #include "LobbyInvitePanelWidget.generated.h"
 
 class UButton;
 class UPanelWidget;
 class UTextBlock;
 class ULobbyFriendRowWidget;
-class UMultiplayerSessionsSubsystem;
 
-UCLASS(Blueprintable)
+UCLASS(Abstract)
 class MULTIPLAYERSESSION_API ULobbyInvitePanelWidget : public UUserWidget
 {
 	GENERATED_BODY()
@@ -20,55 +20,46 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer Sessions|Lobby Invite")
 	void RefreshFriends();
 
-	UFUNCTION(BlueprintCallable, Category = "Multiplayer Sessions|Lobby Invite")
-	void RebuildFriendRows();
-
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Multiplayer Sessions|Lobby Invite")
+	UPROPERTY(EditDefaultsOnly, Category = "Multiplayer Sessions|Lobby Invite")
 	TSubclassOf<ULobbyFriendRowWidget> FriendRowWidgetClass;
 
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
+	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> StatusText;
-
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
-	TObjectPtr<UPanelWidget> FriendListBox;
-
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> RoomStatusText;
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> FriendCountText;
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> EmptyText;
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UPanelWidget> FriendList;
+	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> RefreshButton;
-
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
+	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> StartButton;
-
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Multiplayer Sessions|Lobby Invite")
-	TObjectPtr<UButton> CloseButton;
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> LeaveButton;
 
 private:
 	UFUNCTION()
-	void HandleRefreshClicked();
-
-	UFUNCTION()
 	void HandleStartClicked();
-
 	UFUNCTION()
-	void HandleCloseClicked();
-
+	void HandleLeaveClicked();
 	UFUNCTION()
 	void HandleFriendsListUpdated(const TArray<FSteamFriendInviteEntry>& Friends);
-
 	UFUNCTION()
-	void HandleInviteStatusChanged(FText StatusMessage);
+	void HandleInviteStatusChanged(FText Message);
+	UFUNCTION()
+	void HandleFlowStateChanged(EMultiplayerSessionFlowState State, FText Error);
 
-	bool ResolveMultiplayerSessionsSubsystem();
-	void BindButtonDelegates();
-	void UnbindButtonDelegates();
-	void BindSubsystemDelegates();
-	void UnbindSubsystemDelegates();
-	void RebuildFriendRowsFromList(const TArray<FSteamFriendInviteEntry>& Friends);
-	void SetStatusMessage(const FText& StatusMessage);
+	void UpdateActions();
 
 	UPROPERTY(Transient)
-	TObjectPtr<UMultiplayerSessionsSubsystem> MultiplayerSessionsSubsystem;
+	TObjectPtr<ULobbyInviteSubsystem> Invites;
+	UPROPERTY(Transient)
+	TObjectPtr<UMultiplayerSessionFlowSubsystem> Flow;
 };

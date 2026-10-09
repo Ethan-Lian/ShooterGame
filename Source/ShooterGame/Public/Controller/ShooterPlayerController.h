@@ -2,10 +2,16 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "GameplayTagContainer.h"
 #include "ShooterPlayerController.generated.h"
 
-class UInputAction;
-class UInputMappingContext;
+class ACharacter;
+class APlayerCharacter;
+class UAbilitySystemComponent;
+class UShooterAbilitySystemComponent;
+class UShooterInputConfig;
+class UShooterCombatComponent;
+class UShooterMovementStateComponent;
 struct FInputActionValue;
 
 UCLASS()
@@ -16,75 +22,44 @@ class SHOOTERGAME_API AShooterPlayerController : public APlayerController
 public:
 	AShooterPlayerController();
 
-	// Adds the default input mapping context for the locally controlled player.
+	// Adds configured input mapping contexts for the locally controlled player.
 	virtual void BeginPlay() override;
 
-	// Binds Enhanced Input actions to thin forwarding functions on the controlled character.
+	// Binds Enhanced Input actions from the configured input data asset.
 	virtual void SetupInputComponent() override;
 
 	// Notifies the screen HUD when local pawn ownership changes.
 	virtual void SetPawn(APawn* InPawn) override;
 
 protected:
-	// Stores the default player mapping context configured by a Blueprint child class.
+	// Data asset that owns mapping contexts plus native and ability input actions.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
-	TObjectPtr<UInputMappingContext> DefaultMappingContext;
-
-	// Stores the move action configured by a Blueprint child class.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
-	TObjectPtr<UInputAction> MoveAction;
-
-	// Stores the look action configured by a Blueprint child class.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
-	TObjectPtr<UInputAction> LookAction;
-
-	// Stores the fire action configured by a Blueprint child class.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
-	TObjectPtr<UInputAction> FireAction;
-
-	// Stores the jump action configured by a Blueprint child class.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
-	TObjectPtr<UInputAction> JumpAction;
-
-	// Stores the hold-to-aim action configured by a Blueprint child class.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
-	TObjectPtr<UInputAction> AimAction;
-
-	// Stores the hold-to-crouch action configured by a Blueprint child class.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
-	TObjectPtr<UInputAction> CrouchAction;
-
-	// Stores the hold-to-sprint action configured by a Blueprint child class.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
-	TObjectPtr<UInputAction> SprintAction;
-
-	// Stores the pickup action configured by a Blueprint child class.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
-	TObjectPtr<UInputAction> PickupWeaponAction;
-
-	// Stores the drop action configured by a Blueprint child class.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
-	TObjectPtr<UInputAction> DropWeaponAction;
+	TObjectPtr<UShooterInputConfig> InputConfig;
 
 private:
-	// Creates runtime fallback input assets and key mappings when cooked assets are missing.
-	void EnsureRuntimeInputBindings();
-
 	// Pushes the current pawn into the HUD after local possession changes.
 	void NotifyHUDObservedPawnChanged();
 
-	// Returns whether a specific mapping context already exposes the same action/key pair.
-	bool HasActionMapped(const UInputMappingContext* MappingContext, UInputAction* Action, const struct FKey& Key) const;
-
-	// Adds a mapping only when no existing context already contains the same action/key pair.
-	void EnsureActionMapped(UInputMappingContext* MappingContext, UInputAction* Action, const struct FKey& Key) const;
-
-	// Stores the runtime-only mapping context that injects fallback actions not authored in assets.
-	UPROPERTY(Transient)
-	TObjectPtr<UInputMappingContext> RuntimeInputMappingContext;
-
 	// Resolves the controlled pawn as the project-specific player character type.
-	class APlayerCharacter* GetPlayerCharacter() const;
+	APlayerCharacter* GetPlayerCharacter() const;
+
+	// Resolves the controlled pawn as a character for built-in movement actions.
+	ACharacter* GetControlledCharacter() const;
+
+	// Resolves the controlled pawn's ASC through the combat interface.
+	UAbilitySystemComponent* GetControlledAbilitySystemComponent() const;
+
+	// Resolves the controlled pawn's Shooter ASC when generic ability input can be forwarded directly.
+	UShooterAbilitySystemComponent* GetControlledShooterAbilitySystemComponent() const;
+
+	// Resolves the controlled pawn's combat component through the combat interface.
+	UShooterCombatComponent* GetControlledCombatComponent() const;
+
+	// Resolves the controlled pawn's movement-state component through the combat interface.
+	UShooterMovementStateComponent* GetControlledMovementStateComponent() const;
+
+	// Returns whether input should be blocked because the pawn is already dead.
+	bool IsControlledPawnDead() const;
 
 	// Reads the movement vector from the action payload and forwards it to the character.
 	void HandleMove(const FInputActionValue& InputValue);
@@ -95,39 +70,29 @@ private:
 	// Reads the look vector from the action payload and forwards it to the character.
 	void HandleLook(const FInputActionValue& InputValue);
 
-	// Starts the fire-input state on the character.
-	void HandleFireStarted();
+	// Routes an ability-tagged input press to the component that owns that gameplay state.
+	void HandleAbilityInputPressed(FGameplayTag InputTag);
 
-	// Stops the fire-input state on the character.
-	void HandleFireCompleted();
+	// Routes an ability-tagged input release to the component that owns that gameplay state.
+	void HandleAbilityInputReleased(FGameplayTag InputTag);
 
-	// Starts the jump state on the character.
+	// Starts the built-in jump state on the controlled character.
 	void HandleJumpStarted();
 
-	// Stops the jump state on the character.
+	// Stops the built-in jump state on the controlled character.
 	void HandleJumpCompleted();
 
-	// Starts the aim state on the character while the input stays held.
+	// Starts the combat aim state while the input stays held.
 	void HandleAimStarted();
 
-	// Stops the aim state on the character when the input is released or canceled.
+	// Stops the combat aim state when the input is released or canceled.
 	void HandleAimCompleted();
 
-	// Starts the crouch state on the character while the input stays held.
+	// Starts the built-in crouch state while the input stays held.
 	void HandleCrouchStarted();
 
-	// Stops the crouch state on the character when the input is released or canceled.
+	// Stops the built-in crouch state when the input is released or canceled.
 	void HandleCrouchCompleted();
 
-	// Starts the sprint state on the character while forward movement input is held.
-	void HandleSprintStarted();
-
-	// Stops the sprint state on the character when the input is released or canceled.
-	void HandleSprintCompleted();
-
-	// Requests pickup of the world weapon currently targeted by the screen crosshair.
-	void HandlePickupStarted();
-
-	// Requests dropping of the current weapon using the crosshair-driven throw direction.
-	void HandleDropStarted();
+	TArray<uint32> InputBindHandles;
 };

@@ -1,9 +1,13 @@
 ﻿#pragma once
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "MultiplayerSessionFlowSubsystem.h"
 #include "Menu.generated.h"
 
 class UButton;
+class UTextBlock;
+class UMultiplayerSessionUIManagerSubsystem;
+
 UCLASS()
 class MULTIPLAYERSESSION_API UMenu : public UUserWidget
 {
@@ -11,23 +15,23 @@ class MULTIPLAYERSESSION_API UMenu : public UUserWidget
 	
 public:
 	UFUNCTION(BlueprintCallable)
-	void MenuSetup(int32 NumberOfPublicConnections = 4, FString TypeOfMatch = FString(TEXT("FreeForAll")), FString Path = FString(TEXT("/Game/ThirdPerson/Lobby")));
+	void MenuSetup(int32 NumberOfPublicConnections = 4, FString TypeOfMatch = FString(TEXT("FreeForAll")), FString Path = FString());
 	
 	virtual bool Initialize() override;
-	
-	//这个函数是?
 	virtual void NativeDestruct() override;
+
 private:
-	
-	// The Subsystem designed to handle all online session functionality.
-	class UMultiplayerSessionsSubsystem* MultiplayerSessionsSubsystem;
+	UPROPERTY(Transient)
+	TObjectPtr<UMultiplayerSessionFlowSubsystem> SessionFlow;
 	
 	UPROPERTY(meta=(BindWidget))
-	UButton* HostButton;
-	
-	UPROPERTY(meta=(BindWidgetOptional))
-	UButton* JoinButton;
-	
+	TObjectPtr<UButton> HostButton;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> StatusText;
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> RetryButton;
+
 	UPROPERTY(BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
 	int32 NumPublicConnections{4};
 
@@ -35,21 +39,17 @@ private:
 	FString MatchType{TEXT("FreeForAll")};
 	
 	FString LobbyPath;
+
+	bool bIsTearingDown = false;
 	
 	UFUNCTION()
 	void HostButtonClicked();
+	UFUNCTION()
+	void RetryButtonClicked();
 
 	void MenuTearDown();
-	
-	/*
-	 * custom callbacks for the multiplayerSessionSubsystem's custom delegates
-	 */
-	UFUNCTION()
-	void OnCreateSessionComplete(bool bWasSuccessful);
+	UMultiplayerSessionUIManagerSubsystem* GetUIManagerSubsystem() const;
 
 	UFUNCTION()
-	void OnDestroySessionComplete(bool bWasSuccessful);
-
-	UFUNCTION()
-	void OnStartSessionComplete(bool bWasSuccessful);
+	void HandleFlowStateChanged(EMultiplayerSessionFlowState State, FText Error);
 };

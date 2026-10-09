@@ -3,8 +3,10 @@
 #include "AbilitySystem/ShooterGameplayTags.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/Effects/GE_SprintSpeed.h"
-#include "Character/PlayerCharacter.h"
+#include "Components/ShooterCombatComponent.h"
 #include "Components/ShooterMovementStateComponent.h"
+#include "GameFramework/Character.h"
+#include "Interfaces/ShooterCombatInterface.h"
 
 UGA_Sprint::UGA_Sprint()
 {
@@ -28,13 +30,14 @@ void UGA_Sprint::ActivateAbility(
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	APlayerCharacter* ShooterCharacter = Cast<APlayerCharacter>(GetAvatarActorFromActorInfo());
-	
-	UShooterMovementStateComponent* MovementStateComponent = ShooterCharacter != nullptr
-		? ShooterCharacter->GetMovementStateComponent()
+	UObject* AvatarObject = GetAvatarActorFromActorInfo();
+	IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(AvatarObject);
+
+	UShooterMovementStateComponent* MovementStateComponent = CombatOwner != nullptr
+		? CombatOwner->GetShooterMovementStateComponent()
 		: nullptr;
 	
-	if (ShooterCharacter == nullptr
+	if (CombatOwner == nullptr
 		|| MovementStateComponent == nullptr
 		|| !MovementStateComponent->IsSprintDirectionAllowed()
 		|| SprintSpeedEffectClass == nullptr
@@ -44,8 +47,15 @@ void UGA_Sprint::ActivateAbility(
 		return;
 	}
 
-	ShooterCharacter->StopAimInput();
-	ShooterCharacter->StopCrouchInput();
+	if (UShooterCombatComponent* CombatComponent = CombatOwner->GetShooterCombatComponent())
+	{
+		CombatComponent->StopAimInput();
+	}
+
+	if (ACharacter* AvatarCharacter = Cast<ACharacter>(AvatarObject))
+	{
+		AvatarCharacter->UnCrouch();
+	}
 
 	const FGameplayEffectSpecHandle SprintSpeedSpecHandle = MakeOutgoingGameplayEffectSpec(
 		SprintSpeedEffectClass,

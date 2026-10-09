@@ -1,18 +1,22 @@
 #include "AbilitySystem/Abilities/GA_FireWeapon.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
+#include "Abilities/Tasks/AbilityTask_WaitDelay.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
-#include "Character/PlayerCharacter.h"
 #include "Components/ShooterWeaponEquipmentComponent.h"
 #include "GameFramework/Controller.h"
-#include "Projectile/ShooterProjectileBase.h"
+#include "GameFramework/Pawn.h"
+#include "Interfaces/ShooterEquipmentInterface.h"
 #include "Weapon/ShooterWeaponBase.h"
+#include "Weapon/ShooterWeaponEquipmentActor.h"
 #include "Weapon/WeaponDataAsset.h"
 #include "Weapon/ShooterWeaponInstance.h"
 #include "ShooterGame.h"
 #include "Engine/World.h"
+#include "Interfaces/ShooterCombatInterface.h"
+#include "Components/ShooterCombatComponent.h"
+#include "Components/ShooterInventoryComponent.h"
 #include "GameplayCueManager.h"
-#include "TimerManager.h"
 
 UGA_FireWeapon::UGA_FireWeapon()
 {
@@ -33,32 +37,21 @@ void UGA_FireWeapon::ActivateAbility(
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	APlayerCharacter* ShooterCharacter = Cast<APlayerCharacter>(GetAvatarActorFromActorInfo());
-	UShooterWeaponEquipmentComponent* EquipmentComponent = ShooterCharacter != nullptr
-		? ShooterCharacter->GetWeaponEquipmentComponent()
-		: nullptr;
-	UShooterWeaponInstance* EquippedWeaponInstance = EquipmentComponent != nullptr
-		? EquipmentComponent->GetEquippedWeaponInstance()
-		: nullptr;
-	if (ShooterCharacter == nullptr || EquippedWeaponInstance == nullptr)
+	APawn* ShooterPawn = Cast<APawn>(GetAvatarActorFromActorInfo());
+	UShooterWeaponInstance* EquippedWeaponInstance = GetEquippedWeaponInstance();
+	if (ShooterPawn == nullptr || EquippedWeaponInstance == nullptr)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
-	FireSingleShot();
+	if (!FireSingleShot())
+	{
+		return;
+	}
 
 	const float FireInterval = FMath::Max(0.01f, EquippedWeaponInstance->GetFireConfig().FireInterval);
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().SetTimer(
-			RepeatingFireTimerHandle,
-			this,
-			&UGA_FireWeapon::HandleRepeatedFire,
-			FireInterval,
-			true,
-			FireInterval);
-	}
+	QueueNextShot(FireInterval);
 }
 
 void UGA_FireWeapon::EndAbility(
@@ -68,72 +61,130 @@ void UGA_FireWeapon::EndAbility(
 	bool bReplicateEndAbility,
 	bool bWasCancelled)
 {
-	if (UWorld* World = GetWorld())
+	if (FireDelayTask != nullptr)
 	{
-		World->GetTimerManager().ClearTimer(RepeatingFireTimerHandle);
+		FireDelayTask->EndTask();
+		FireDelayTask = nullptr;
 	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
-void UGA_FireWeapon::FireSingleShot()
+UShooterWeaponInstance* UGA_FireWeapon::GetEquippedWeaponInstance() const
 {
-	APlayerCharacter* ShooterCharacter = Cast<APlayerCharacter>(GetAvatarActorFromActorInfo());
-	UShooterWeaponEquipmentComponent* EquipmentComponent = ShooterCharacter != nullptr
-		? ShooterCharacter->GetWeaponEquipmentComponent()
+	const APawn* ShooterPawn = Cast<APawn>(GetAvatarActorFromActorInfo());
+	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(ShooterPawn);
+	const UShooterWeaponEquipmentComponent* EquipmentComponent = EquipmentOwner != nullptr
+		? EquipmentOwner->GetShooterWeaponEquipmentComponent()
 		: nullptr;
-	UShooterWeaponInstance* EquippedWeaponInstance = EquipmentComponent != nullptr
-		? EquipmentComponent->GetEquippedWeaponInstance()
-		: nullptr;
+	return EquipmentComponent != nullptr ? EquipmentComponent->GetEquippedWeaponInstance() : nullptr;
+}
+
+bool UGA_FireWeapon::CommitFireShot()
+{
+	CostGameplayEffectClass = FireCostGameplayEffectClass;
+	CooldownGameplayEffectClass = FireCooldownGameplayEffectClass;
+
+	FGameplayTagContainer FailureTags;
+	if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, &FailureTags))
+	{
+		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+		return false;
+	}
+
+	return true;
+}
+
+bool UGA_FireWeapon::FireSingleShot()
+{
+	APawn* ShooterPawn = Cast<APawn>(GetAvatarActorFromActorInfo());
+	UShooterWeaponInstance* EquippedWeaponInstance = GetEquippedWeaponInstance();
 	AShooterWeaponBase* EquippedWeaponActor = EquippedWeaponInstance != nullptr
 		? EquippedWeaponInstance->GetEquippedWeaponActor()
 		: nullptr;
 	UAbilitySystemComponent* SourceAbilitySystem = GetAbilitySystemComponentFromActorInfo();
-	if (ShooterCharacter == nullptr
+	if (ShooterPawn == nullptr
 		|| EquippedWeaponInstance == nullptr
 		|| EquippedWeaponActor == nullptr
 		|| SourceAbilitySystem == nullptr)
 	{
 		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
-		return;
+		return false;
 	}
 
 	const FWeaponFireConfig& FireConfig = EquippedWeaponInstance->GetFireConfig();
-	if (FireConfig.DamageEffectClass == nullptr
-		|| (FireConfig.FireMode == EWeaponFireMode::Projectile && FireConfig.ProjectileClass == nullptr))
+	if (FireConfig.DamageEffectClass == nullptr)
 	{
-		UE_LOG(LogShooterGame, Warning, TEXT("%s cannot fire because its weapon config is incomplete."), *ShooterCharacter->GetName());
+		UE_LOG(LogShooterGame, Warning, TEXT("%s cannot fire because its weapon config is incomplete."), *ShooterPawn->GetName());
 		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
-		return;
+		return false;
+	}
+
+	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(ShooterPawn);
+	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(ShooterPawn);
+	UShooterInventoryComponent* Inventory = EquipmentOwner != nullptr ? EquipmentOwner->GetShooterInventoryComponent() : nullptr;
+	const UShooterCombatComponent* Combat = CombatOwner != nullptr ? CombatOwner->GetShooterCombatComponent() : nullptr;
+	const FWeaponInventoryEntry* Entry = Inventory != nullptr ? Inventory->GetInventoryEntryByItemId(EquippedWeaponInstance->GetItemId()) : nullptr;
+	if (Entry == nullptr || Entry->CurrentMagazineAmmo <= 0 || (Combat != nullptr && Combat->IsReloading()))
+	{
+		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+		return false;
+	}
+	if (!CommitFireShot())
+	{
+		return false;
+	}
+	// Commit can invoke GAS callbacks; recheck the execution before mutating ammo.
+	if (!IsActive() || !Inventory->ConsumeMagazineRound(EquippedWeaponInstance->GetItemId()))
+	{
+		if (IsActive())
+		{
+			CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+		}
+		return false;
 	}
 
 	const FTransform MuzzleTransform = EquippedWeaponInstance->GetMuzzleTransform();
 
-	if (FireConfig.FireMode == EWeaponFireMode::Projectile)
+	FireHitscanShot(ShooterPawn, EquippedWeaponActor, SourceAbilitySystem, FireConfig, MuzzleTransform);
+	return true;
+}
+
+void UGA_FireWeapon::QueueNextShot(float FireInterval)
+{
+	if (FireDelayTask != nullptr)
 	{
-		FireProjectileShot(ShooterCharacter, EquippedWeaponActor, SourceAbilitySystem, FireConfig, MuzzleTransform);
+		FireDelayTask->EndTask();
+		FireDelayTask = nullptr;
+	}
+
+	FireDelayTask = UAbilityTask_WaitDelay::WaitDelay(this, FMath::Max(0.01f, FireInterval));
+	if (FireDelayTask == nullptr)
+	{
+		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
 		return;
 	}
 
-	FireHitscanShot(ShooterCharacter, EquippedWeaponActor, SourceAbilitySystem, FireConfig, MuzzleTransform);
+	FireDelayTask->OnFinish.AddDynamic(this, &UGA_FireWeapon::HandleRepeatedFire);
+	FireDelayTask->ReadyForActivation();
 }
 
 bool UGA_FireWeapon::ResolveAimPoint(
-	const APlayerCharacter* ShooterCharacter,
+	const APawn* ShooterPawn,
 	const AShooterWeaponBase* EquippedWeaponActor,
 	const FWeaponFireConfig& FireConfig,
 	FVector& OutAimPoint) const
 {
 	UWorld* World = GetWorld();
-	if (ShooterCharacter == nullptr || World == nullptr || FireConfig.AimTraceDistance <= 0.f)
+	if (ShooterPawn == nullptr || World == nullptr || FireConfig.AimTraceDistance <= 0.f)
 	{
 		return false;
 	}
 
-	FVector ViewLocation = ShooterCharacter->GetPawnViewLocation();
-	FRotator ViewRotation = ShooterCharacter->GetBaseAimRotation();
+	FVector ViewLocation = ShooterPawn->GetPawnViewLocation();
+	FRotator ViewRotation = ShooterPawn->GetBaseAimRotation();
 
-	if (const AController* OwnerController = ShooterCharacter->GetController())
+	if (const AController* OwnerController = ShooterPawn->GetController())
 	{
 		OwnerController->GetPlayerViewPoint(ViewLocation, ViewRotation);
 	}
@@ -141,8 +192,8 @@ bool UGA_FireWeapon::ResolveAimPoint(
 	const FVector TraceStart = ViewLocation;
 	const FVector TraceEnd = TraceStart + (ViewRotation.Vector() * FireConfig.AimTraceDistance);
 
-	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(WeaponCameraAimTrace), false, ShooterCharacter);
-	QueryParams.AddIgnoredActor(ShooterCharacter);
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(WeaponCameraAimTrace), false, ShooterPawn);
+	QueryParams.AddIgnoredActor(ShooterPawn);
 	if (EquippedWeaponActor != nullptr)
 	{
 		QueryParams.AddIgnoredActor(EquippedWeaponActor);
@@ -166,36 +217,36 @@ bool UGA_FireWeapon::ResolveAimPoint(
 }
 
 void UGA_FireWeapon::FireHitscanShot(
-	APlayerCharacter* ShooterCharacter,
+	APawn* ShooterPawn,
 	AShooterWeaponBase* EquippedWeaponActor,
 	UAbilitySystemComponent* SourceAbilitySystem,
 	const FWeaponFireConfig& FireConfig,
 	const FTransform& MuzzleTransform)
 {
 	UWorld* World = GetWorld();
-	if (ShooterCharacter == nullptr || SourceAbilitySystem == nullptr || World == nullptr)
+	if (ShooterPawn == nullptr || SourceAbilitySystem == nullptr || World == nullptr)
 	{
 		return;
 	}
 
 	const FVector MuzzleLocation = MuzzleTransform.GetLocation();
 	FVector AimPoint = FVector::ZeroVector;
-	if (!ResolveAimPoint(ShooterCharacter, EquippedWeaponActor, FireConfig, AimPoint))
+	if (!ResolveAimPoint(ShooterPawn, EquippedWeaponActor, FireConfig, AimPoint))
 	{
 		const float FallbackTraceDistance = FireConfig.AimTraceDistance > 0.f ? FireConfig.AimTraceDistance : 100000.f;
-		AimPoint = MuzzleLocation + (ShooterCharacter->GetBaseAimRotation().Vector() * FallbackTraceDistance);
+		AimPoint = MuzzleLocation + (ShooterPawn->GetBaseAimRotation().Vector() * FallbackTraceDistance);
 	}
 
 	FVector ShotDirection = (AimPoint - MuzzleLocation).GetSafeNormal();
 	if (ShotDirection.IsNearlyZero())
 	{
-		ShotDirection = ShooterCharacter->GetBaseAimRotation().Vector();
+		ShotDirection = ShooterPawn->GetBaseAimRotation().Vector();
 	}
 
-	ExecuteFireCue(ShooterCharacter, EquippedWeaponActor, SourceAbilitySystem, MuzzleLocation, ShotDirection);
+	ExecuteFireCue(ShooterPawn, EquippedWeaponActor, SourceAbilitySystem, MuzzleLocation, ShotDirection);
 
-	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(WeaponMuzzleDamageTrace), false, ShooterCharacter);
-	QueryParams.AddIgnoredActor(ShooterCharacter);
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(WeaponMuzzleDamageTrace), false, ShooterPawn);
+	QueryParams.AddIgnoredActor(ShooterPawn);
 	if (EquippedWeaponActor != nullptr)
 	{
 		QueryParams.AddIgnoredActor(EquippedWeaponActor);
@@ -221,7 +272,7 @@ void UGA_FireWeapon::FireHitscanShot(
 	}
 
 	AActor* HitActor = HitResult.GetActor();
-	if (HitActor == nullptr || HitActor == ShooterCharacter || HitActor == EquippedWeaponActor)
+	if (HitActor == nullptr || HitActor == ShooterPawn || HitActor == EquippedWeaponActor)
 	{
 		return;
 	}
@@ -233,14 +284,14 @@ void UGA_FireWeapon::FireHitscanShot(
 	}
 
 	FGameplayEffectContextHandle EffectContext = SourceAbilitySystem->MakeEffectContext();
-	EffectContext.AddInstigator(ShooterCharacter, EquippedWeaponActor);
+	EffectContext.AddInstigator(ShooterPawn, EquippedWeaponActor);
 	EffectContext.AddSourceObject(EquippedWeaponActor);
 	EffectContext.AddHitResult(HitResult, true);
 
 	FGameplayEffectSpecHandle DamageSpecHandle = SourceAbilitySystem->MakeOutgoingSpec(FireConfig.DamageEffectClass, 1.f, EffectContext);
 	if (!DamageSpecHandle.IsValid())
 	{
-		UE_LOG(LogShooterGame, Warning, TEXT("%s failed to create hitscan damage spec."), *ShooterCharacter->GetName());
+		UE_LOG(LogShooterGame, Warning, TEXT("%s failed to create hitscan damage spec."), *ShooterPawn->GetName());
 		return;
 	}
 
@@ -248,56 +299,20 @@ void UGA_FireWeapon::FireHitscanShot(
 	SourceAbilitySystem->ApplyGameplayEffectSpecToTarget(*DamageSpecHandle.Data.Get(), TargetAbilitySystem);
 }
 
-void UGA_FireWeapon::FireProjectileShot(
-	APlayerCharacter* ShooterCharacter,
-	AShooterWeaponBase* EquippedWeaponActor,
-	UAbilitySystemComponent* SourceAbilitySystem,
-	const FWeaponFireConfig& FireConfig,
-	const FTransform& MuzzleTransform)
-{
-	if (ShooterCharacter == nullptr || SourceAbilitySystem == nullptr || FireConfig.ProjectileClass == nullptr)
-	{
-		return;
-	}
-
-	const FRotator SpawnRotation = ShooterCharacter->GetBaseAimRotation();
-	const FTransform SpawnTransform(SpawnRotation, MuzzleTransform.GetLocation());
-
-	FActorSpawnParameters SpawnParameters;
-	SpawnParameters.Owner = ShooterCharacter;
-	SpawnParameters.Instigator = ShooterCharacter;
-	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	AShooterProjectileBase* Projectile = GetWorld()->SpawnActor<AShooterProjectileBase>(
-		FireConfig.ProjectileClass,
-		SpawnTransform,
-		SpawnParameters);
-
-	if (Projectile == nullptr)
-	{
-		UE_LOG(LogShooterGame, Warning, TEXT("%s failed to spawn a projectile."), *ShooterCharacter->GetName());
-		return;
-	}
-
-	Projectile->InitializeProjectile(SourceAbilitySystem, FireConfig.DamageEffectClass, FireConfig.BaseDamage);
-
-	ExecuteFireCue(ShooterCharacter, EquippedWeaponActor, SourceAbilitySystem, MuzzleTransform.GetLocation(), SpawnRotation.Vector());
-}
-
 void UGA_FireWeapon::ExecuteFireCue(
-	APlayerCharacter* ShooterCharacter,
+	APawn* ShooterPawn,
 	AShooterWeaponBase* EquippedWeaponActor,
 	UAbilitySystemComponent* SourceAbilitySystem,
 	const FVector& MuzzleLocation,
 	const FVector& ShotDirection) const
 {
-	if (ShooterCharacter == nullptr || SourceAbilitySystem == nullptr)
+	if (ShooterPawn == nullptr || SourceAbilitySystem == nullptr)
 	{
 		return;
 	}
 
 	FGameplayCueParameters FireCueParameters;
-	FireCueParameters.Instigator = ShooterCharacter;
+	FireCueParameters.Instigator = ShooterPawn;
 	FireCueParameters.EffectCauser = EquippedWeaponActor;
 	FireCueParameters.SourceObject = EquippedWeaponActor;
 	FireCueParameters.Location = MuzzleLocation;
@@ -307,5 +322,14 @@ void UGA_FireWeapon::ExecuteFireCue(
 
 void UGA_FireWeapon::HandleRepeatedFire()
 {
-	FireSingleShot();
+	FireDelayTask = nullptr;
+
+	UShooterWeaponInstance* EquippedWeaponInstance = GetEquippedWeaponInstance();
+	if (EquippedWeaponInstance == nullptr || !FireSingleShot())
+	{
+		return;
+	}
+
+	const float FireInterval = FMath::Max(0.01f, EquippedWeaponInstance->GetFireConfig().FireInterval);
+	QueueNextShot(FireInterval);
 }

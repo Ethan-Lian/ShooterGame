@@ -3,6 +3,7 @@
 #include "Controller/ShooterPlayerController.h"
 #include "Engine/World.h"
 #include "GameFramework/Controller.h"
+#include "Messages/ShooterGameplayMessageSubsystem.h"
 #include "TimerManager.h"
 #include "PlayerState/ShooterPlayerState.h"
 
@@ -11,6 +12,30 @@ AShooterGameMode::AShooterGameMode()
 	PlayerControllerClass = AShooterPlayerController::StaticClass();
 	DefaultPawnClass = APlayerCharacter::StaticClass();
 	PlayerStateClass = AShooterPlayerState::StaticClass();
+}
+
+void AShooterGameMode::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (UShooterGameplayMessageSubsystem* MessageSubsystem = UShooterGameplayMessageSubsystem::Get(this))
+	{
+		PlayerDeathMessageListenerHandle = MessageSubsystem->RegisterPlayerDeathListener(
+			FShooterPlayerDeathMessageDelegate::FDelegate::CreateUObject(
+				this,
+				&AShooterGameMode::HandlePlayerDeathMessage));
+	}
+}
+
+void AShooterGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UShooterGameplayMessageSubsystem* MessageSubsystem = UShooterGameplayMessageSubsystem::Get(this))
+	{
+		MessageSubsystem->UnregisterPlayerDeathListener(PlayerDeathMessageListenerHandle);
+	}
+
+	PlayerDeathMessageListenerHandle.Reset();
+	Super::EndPlay(EndPlayReason);
 }
 
 void AShooterGameMode::RequestPlayerRespawn(AController* Controller, APlayerCharacter* DeadCharacter)
@@ -39,6 +64,11 @@ void AShooterGameMode::RequestPlayerRespawn(AController* Controller, APlayerChar
 	GetWorldTimerManager().SetTimer(RespawnTimerHandle, RespawnDelegate, RespawnDelay, false);
 }
 
+void AShooterGameMode::HandlePlayerDeathMessage(const FShooterPlayerDeathMessage& Message)
+{
+	RequestPlayerRespawn(Message.Controller, Cast<APlayerCharacter>(Message.DeadPawn.Get()));
+}
+
 void AShooterGameMode::HandleRespawnTimerExpired(TWeakObjectPtr<AController> Controller, TWeakObjectPtr<APlayerCharacter> DeadCharacter)
 {
 	AController* RespawningController = Controller.Get();
@@ -49,14 +79,13 @@ void AShooterGameMode::HandleRespawnTimerExpired(TWeakObjectPtr<AController> Con
 
 	APawn* CurrentPawn = RespawningController->GetPawn();
 	APlayerCharacter* DeadPawn = DeadCharacter.Get();
-	if (CurrentPawn != nullptr && CurrentPawn != DeadPawn)
+	if (DeadPawn == nullptr)
 	{
 		return;
 	}
-
-	if (AShooterPlayerState* ShooterPlayerState = RespawningController->GetPlayerState<AShooterPlayerState>())
+	if (CurrentPawn != nullptr && CurrentPawn != DeadPawn)
 	{
-		ShooterPlayerState->ResetCombatStateForRespawn();
+		return;
 	}
 
 	if (DeadPawn != nullptr)
@@ -69,5 +98,11 @@ void AShooterGameMode::HandleRespawnTimerExpired(TWeakObjectPtr<AController> Con
 		DeadPawn->Destroy();
 	}
 
+	if (AShooterPlayerState* ShooterPlayerState = RespawningController->GetPlayerState<AShooterPlayerState>())
+	{
+		ShooterPlayerState->ResetCombatStateForRespawn();
+	}
+
 	RestartPlayer(RespawningController);
+
 }

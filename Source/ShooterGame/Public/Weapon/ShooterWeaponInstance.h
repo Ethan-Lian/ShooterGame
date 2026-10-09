@@ -5,7 +5,7 @@
 #include "Components/ShooterInventoryComponent.h"
 #include "ShooterWeaponInstance.generated.h"
 
-class AShooterWeaponBase;
+class AShooterWeaponEquipmentActor;
 
 UCLASS(BlueprintType)
 class SHOOTERGAME_API UShooterWeaponInstance : public UObject
@@ -14,7 +14,7 @@ class SHOOTERGAME_API UShooterWeaponInstance : public UObject
 
 public:
 	// Initializes the instance from the current logical inventory entry plus presentation actor.
-	void InitializeFromInventoryEntry(const FWeaponInventoryEntry& SourceEntry, AShooterWeaponBase* InEquippedWeaponActor);
+	void InitializeFromInventoryEntry(const FWeaponInventoryEntry& SourceEntry, AShooterWeaponEquipmentActor* InEquippedWeaponActor);
 
 	// Returns the source definition asset when the weapon originated from data.
 	const UWeaponDataAsset* GetWeaponDefinition() const { return WeaponDefinition; }
@@ -22,25 +22,19 @@ public:
 	// Returns the copied fire config used by abilities while the weapon is equipped.
 	const FWeaponFireConfig& GetFireConfig() const { return FireConfig; }
 
-	// Returns the copied ammo config used to seed future runtime ammo rules.
+	// Returns the copied ammo configuration; Inventory owns the runtime counts.
 	const FWeaponAmmoConfig& GetAmmoConfig() const { return AmmoConfig; }
 
 	// Returns the stable logical inventory id that owns this runtime instance.
 	int32 GetItemId() const { return ItemId; }
 
-	// Returns the logical slot index that currently owns this runtime instance.
-	int32 GetSlotIndex() const { return SlotIndex; }
-
 	// Returns the currently equipped presentation actor backing this instance.
-	AShooterWeaponBase* GetEquippedWeaponActor() const { return EquippedWeaponActor.Get(); }
-
-	// Updates which world/equipped actor currently presents this logical weapon instance.
-	void SetEquippedWeaponActor(AShooterWeaponBase* NewEquippedWeaponActor);
+	AShooterWeaponEquipmentActor* GetEquippedWeaponActor() const { return EquippedWeaponActor.Get(); }
 
 	// Clears the current equipped actor reference when the weapon leaves the avatar.
 	void ClearEquippedWeaponActor();
 
-	// Returns the best-known muzzle transform for spawning projectiles.
+	// Returns the best-known muzzle transform for Hitscan traces and fire feedback.
 	FTransform GetMuzzleTransform() const;
 
 	// Returns the copied attachment socket name used by equipped presentation.
@@ -49,10 +43,10 @@ public:
 	// Returns the copied equipped relative transform used by equipped presentation.
 	FTransform GetEquippedRelativeTransform() const { return WeaponMeshRelativeTransform; }
 
-	// Returns the seeded magazine ammo that future reload logic will mutate.
+	// Returns the magazine count refreshed from the owning Inventory entry.
 	int32 GetCurrentMagazineAmmo() const { return CurrentMagazineAmmo; }
 
-	// Returns the seeded reserve ammo that future reload logic will mutate.
+	// Returns the reserve count refreshed from the owning Inventory entry.
 	int32 GetCurrentReserveAmmo() const { return CurrentReserveAmmo; }
 
 private:
@@ -60,23 +54,19 @@ private:
 	UPROPERTY(Transient)
 	int32 ItemId = INDEX_NONE;
 
-	// Logical slot index copied from the owning inventory entry.
-	UPROPERTY(Transient)
-	int32 SlotIndex = INDEX_NONE;
-
 	// Optional source definition asset when the weapon came from a data asset.
 	UPROPERTY(Transient)
 	TObjectPtr<UWeaponDataAsset> WeaponDefinition;
 
 	// The actor class used when this logical weapon needs a presentation actor.
 	UPROPERTY(Transient)
-	TSubclassOf<AShooterWeaponBase> WeaponActorClass;
+	TSubclassOf<AShooterWeaponEquipmentActor> EquipmentActorClass;
 
 	// Static fire config snapshot copied at equip time for definition-driven logic.
 	UPROPERTY(Transient)
 	FWeaponFireConfig FireConfig;
 
-	// Static ammo config snapshot copied at equip time for future runtime ammo logic.
+	// Static ammo configuration copied from the Inventory entry's definition.
 	UPROPERTY(Transient)
 	FWeaponAmmoConfig AmmoConfig;
 
@@ -90,13 +80,13 @@ private:
 
 	// The actor currently presenting this weapon while equipped on the avatar.
 	UPROPERTY(Transient)
-	TObjectPtr<AShooterWeaponBase> EquippedWeaponActor;
+	TObjectPtr<AShooterWeaponEquipmentActor> EquippedWeaponActor;
 
-	// Current magazine ammo seeded from the definition for later gameplay expansion.
+	// Magazine count mirrored from Inventory; do not mutate this snapshot.
 	UPROPERTY(Transient)
 	int32 CurrentMagazineAmmo = 0;
 
-	// Current reserve ammo seeded from the definition for later gameplay expansion.
+	// Reserve count mirrored from Inventory; do not mutate this snapshot.
 	UPROPERTY(Transient)
 	int32 CurrentReserveAmmo = 0;
 };
