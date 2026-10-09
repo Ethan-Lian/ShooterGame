@@ -173,9 +173,3 @@ GameMode 决定重生时机；PawnExtension 只保证旧 Pawn 清理和新 Pawn 
 - 客户端解绑或死亡只隐藏/解绑表现与清理缓存，不主动清空服务器复制的 `EquippedWeapon`、`EquippedItemId`；恢复存活状态后刷新表现。
 - 拾取、切槽位、丢弃、掉落表现与 Projectile 的代码、对应 Blueprint 和废弃输入已移除。Lobby 与 GameLevel1 中的旧拾取武器已清除，Steam Session/邀请/加入与必要 Travel 保留。
 - 删除前的代码、配置、文档与 ShooterGameContent 资源基线保存在本地 `Saved/CodeBaselines/stage3-20261005-102823/`；资源和维护记录仍按仓库规则保留在 Git 跟踪之外。
-
-### 后续验证方式
-
-不再新增自动化 test 或 smoke 脚本；相关现有测试代码与脚本已删除。验证采用必要的 UE 构建检查和开发者游戏内手动验证。
-
-Gameplay 改动后，在 GameLevel 检查出生自动持枪、双方移动/开火造成伤害、死亡不掉落、连续重生后的输入/Health/武器恢复，以及武器 Actor 是否累积。记录实际拓扑、人数、步骤、结果和证据路径；Steam、弱网与 Travel 使用各自的实际运行结果，不由本地验证推断通过。

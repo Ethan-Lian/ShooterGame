@@ -271,6 +271,10 @@ void UShooterWeaponEquipmentComponent::ClearLocalEquippedWeaponPresentation(ASho
 
 void UShooterWeaponEquipmentComponent::RefreshEquippedWeaponInstance()
 {
+	if (APlayerCharacter* Pawn = Cast<APlayerCharacter>(GetOwner()))
+	{
+		Pawn->RefreshFirstPersonPresentation();
+	}
 	if (IsEquipmentInteractionBlocked())
 	{
 		ClearEquippedWeaponInstance();

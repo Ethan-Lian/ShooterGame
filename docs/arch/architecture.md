@@ -85,10 +85,15 @@ local input
 - `State.Dead` 是死亡事实；Character 的碰撞、移动、输入和 Montage 只是当前 Pawn 的表现。
 - GameMode 负责重生规则，Ability 不直接调用 `RestartPlayer`。
 - 当前死亡处理销毁装备 Actor 并删除对应 Inventory 条目，不生成掉落；新 Pawn 自动获得默认武器。拾取、切槽位、丢弃、掉落表现和 Projectile 的代码、输入与对应资源已移除。
-- 默认武器配置在 Equipment 的 `DefaultWeaponDefinition`，原生默认值为现有 `DA_Weapon_AK47`。仍沿用 WeaponInstance、Inventory OwnerOnly 复制和服务器创建武器 Actor 的链路，弹药目前仅初始化数据，未实现扣弹与预测。
+- 默认武器配置在 Equipment 的 `DefaultWeaponDefinition`，原生默认值为现有 `DA_Weapon_AK47`。仍沿用 WeaponInstance、Inventory OwnerOnly 复制和服务器创建武器 Actor 的链路。服务器每次成功开火扣除 Inventory 中的一发弹药；Combat 负责换弹计时，完成后由 Inventory 将备弹转入弹匣。当前不实现开火或换弹预测。
 - `FWeaponPickupData` / `PickupData` 沿用既有序列化名称，现在仅表示装备 Actor 的武器状态快照，不再支持世界拾取。
 
+第一人称相机、自己的角色双臂、手部与枪械动画、瞄准过渡和后坐力由 `APlayerCharacter` 的原生组件与 C++ 驱动。`UShooterFirstPersonAnimInstance` 计算动画状态，`ABP_OwnFirstPerson` 只播放和混合姿势。双臂从自己的角色网格裁出，重新绑定到 Infima 模板骨架，直接使用原始动画；视角武器使用模板原枪及独立弹匣。世界装备外观已通过现有 `DA_Weapon_AK47.WeaponMesh` 换为模板枪与弹匣合并的静态版本，装备类与配置资源保留旧名称。视角表现不拥有 Gameplay 数据，服务器伤害仍使用原有装备 Actor 与世界枪口挂点。资产和生命周期契约见 [第一人称系统](../systems/first-person.md)。完整联机回归仍待开发者验证。
+
+第三人称左手通过世界枪的 `LeftHandGrip` Socket 保持握持：`UShooterAnimInstance` 用 C++ 计算右手骨骼空间的目标与启用权重，`ABP_Player` 在移动姿势混合之后用 FABRIK 调整左臂和手腕。该状态只服务于动画表现，不复制新的 Gameplay 数据；第一人称网格不启用此约束。挂点维护方法与验证范围见 [第一人称系统](../systems/first-person.md)。
+
 ## Runtime Flow 3: Session and Travel
+
 
 ```text
 Host

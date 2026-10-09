@@ -47,7 +47,17 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation|Locomotion")
 	bool bIsSprinting = false;
 
+	// World-weapon grip expressed in hand_r bone space for the third-person FABRIK node.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation|WeaponIK")
+	FTransform LeftHandIKTransform = FTransform::Identity;
+
+	// Zero for first-person meshes, dead pawns, or weapons without a LeftHandGrip socket.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation|WeaponIK")
+	float LeftHandIKAlpha = 0.f;
+
 private:
+	void UpdateLeftHandIK(const APlayerCharacter* PlayerCharacter);
+
 	// Reacquires the owning player character when the cached weak pointer becomes stale.
 	void RefreshOwningPlayerCharacter();
 

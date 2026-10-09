@@ -92,6 +92,41 @@ int32 UShooterInventoryComponent::FindEntryArrayIndexByItemId(int32 ItemId) cons
 	});
 }
 
+bool UShooterInventoryComponent::ConsumeMagazineRound(int32 ItemId)
+{
+	const int32 Index = FindEntryArrayIndexByItemId(ItemId);
+	if (!GetOwner()->HasAuthority() || !InventoryEntries.IsValidIndex(Index) || InventoryEntries[Index].CurrentMagazineAmmo <= 0)
+	{
+		return false;
+	}
+	--InventoryEntries[Index].CurrentMagazineAmmo;
+	OnRep_InventoryEntries();
+	GetOwner()->ForceNetUpdate();
+	return true;
+}
+
+bool UShooterInventoryComponent::CanReload(int32 ItemId) const
+{
+	const FWeaponInventoryEntry* Entry = GetInventoryEntryByItemId(ItemId);
+	return Entry != nullptr && Entry->WeaponDefinition != nullptr && Entry->CurrentReserveAmmo > 0
+		&& Entry->CurrentMagazineAmmo < Entry->WeaponDefinition->AmmoConfig.MagazineSize;
+}
+
+bool UShooterInventoryComponent::ReloadMagazine(int32 ItemId)
+{
+	if (!GetOwner()->HasAuthority() || !CanReload(ItemId))
+	{
+		return false;
+	}
+	FWeaponInventoryEntry& Entry = InventoryEntries[FindEntryArrayIndexByItemId(ItemId)];
+	const int32 Transfer = FMath::Min(Entry.WeaponDefinition->AmmoConfig.MagazineSize - Entry.CurrentMagazineAmmo, Entry.CurrentReserveAmmo);
+	Entry.CurrentMagazineAmmo += Transfer;
+	Entry.CurrentReserveAmmo -= Transfer;
+	OnRep_InventoryEntries();
+	GetOwner()->ForceNetUpdate();
+	return true;
+}
+
 void UShooterInventoryComponent::OnRep_InventoryEntries()
 {
 	const AShooterPlayerState* OwnerPlayerState = Cast<AShooterPlayerState>(GetOwner());

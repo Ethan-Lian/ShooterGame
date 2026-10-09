@@ -22,7 +22,7 @@ public:
 	// Returns the copied fire config used by abilities while the weapon is equipped.
 	const FWeaponFireConfig& GetFireConfig() const { return FireConfig; }
 
-	// Returns the copied ammo config used to seed future runtime ammo rules.
+	// Returns the copied ammo configuration; Inventory owns the runtime counts.
 	const FWeaponAmmoConfig& GetAmmoConfig() const { return AmmoConfig; }
 
 	// Returns the stable logical inventory id that owns this runtime instance.
@@ -43,10 +43,10 @@ public:
 	// Returns the copied equipped relative transform used by equipped presentation.
 	FTransform GetEquippedRelativeTransform() const { return WeaponMeshRelativeTransform; }
 
-	// Returns the seeded magazine ammo that future reload logic will mutate.
+	// Returns the magazine count refreshed from the owning Inventory entry.
 	int32 GetCurrentMagazineAmmo() const { return CurrentMagazineAmmo; }
 
-	// Returns the seeded reserve ammo that future reload logic will mutate.
+	// Returns the reserve count refreshed from the owning Inventory entry.
 	int32 GetCurrentReserveAmmo() const { return CurrentReserveAmmo; }
 
 private:
@@ -66,7 +66,7 @@ private:
 	UPROPERTY(Transient)
 	FWeaponFireConfig FireConfig;
 
-	// Static ammo config snapshot copied at equip time for future runtime ammo logic.
+	// Static ammo configuration copied from the Inventory entry's definition.
 	UPROPERTY(Transient)
 	FWeaponAmmoConfig AmmoConfig;
 
@@ -82,11 +82,11 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<AShooterWeaponEquipmentActor> EquippedWeaponActor;
 
-	// Current magazine ammo seeded from the definition for later gameplay expansion.
+	// Magazine count mirrored from Inventory; do not mutate this snapshot.
 	UPROPERTY(Transient)
 	int32 CurrentMagazineAmmo = 0;
 
-	// Current reserve ammo seeded from the definition for later gameplay expansion.
+	// Reserve count mirrored from Inventory; do not mutate this snapshot.
 	UPROPERTY(Transient)
 	int32 CurrentReserveAmmo = 0;
 };

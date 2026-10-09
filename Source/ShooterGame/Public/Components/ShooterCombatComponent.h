@@ -48,8 +48,24 @@ public:
 
 	// Returns whether the fire input is currently held by this component.
 	bool IsFireInputPressed() const { return bIsFireInputPressed; }
+	bool IsReloading() const { return ReloadStartServerTime >= 0.f; }
+	void StartReloadInput();
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
+	void BeginReload();
+	void FinishReload();
+	void CancelReload();
+	UFUNCTION()
+	void OnRep_ReloadStartServerTime();
+	UFUNCTION(Server, Reliable)
+	void ServerReload();
+
+	UPROPERTY(ReplicatedUsing = OnRep_ReloadStartServerTime)
+	float ReloadStartServerTime = -1.f;
+	FTimerHandle ReloadTimer;
+	int32 ReloadItemId = INDEX_NONE;
+
 	// Resolves the owning character's PlayerState-hosted ASC.
 	UAbilitySystemComponent* GetOwningAbilitySystemComponent() const;
 

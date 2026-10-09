@@ -18,3 +18,4 @@ UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Look, "Input.Look");
 UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Jump, "Input.Jump");
 UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Aim, "Input.Aim");
 UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Crouch, "Input.Crouch");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Input_Reload, "Input.Reload");

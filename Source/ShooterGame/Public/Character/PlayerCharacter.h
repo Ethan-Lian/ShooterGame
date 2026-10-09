@@ -22,7 +22,11 @@ class UShooterWeaponEquipmentComponent;
 class UShooterWeaponInstance;
 class UShooterPawnExtensionComponent;
 class USpringArmComponent;
+class USkeletalMeshComponent;
+class UAnimSequence;
+class UStaticMeshComponent;
 struct FGameplayEventData;
+struct FMinimalViewInfo;
 
 UCLASS()
 class SHOOTERGAME_API APlayerCharacter : public ACharacter, public IAbilitySystemInterface, public IShooterCombatInterface, public IShooterEquipmentInterface
@@ -33,6 +37,17 @@ class SHOOTERGAME_API APlayerCharacter : public ACharacter, public IAbilitySyste
 
 public:
 	APlayerCharacter();
+	virtual void Tick(float DeltaSeconds) override;
+	virtual FVector GetPawnViewLocation() const override;
+	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
+
+	// Local view feedback. Damage traces continue to use the world weapon.
+	void PlayFirstPersonFire();
+	void PlayFirstPersonReload(float ElapsedSeconds);
+	void StopFirstPersonReload();
+	void RefreshFirstPersonPresentation();
+	float GetReloadDuration() const;
+	USkeletalMeshComponent* GetFirstPersonWeapon() const { return FirstPersonWeapon; }
 
 	// Applies camera-relative movement input coming from the owning controller.
 	UFUNCTION(BlueprintCallable, Category = "Player|Movement")
@@ -68,10 +83,10 @@ public:
 	UShooterPawnExtensionComponent* GetPawnExtensionComponent() const { return PawnExtensionComponent; }
 
 public:
-	// Returns the camera boom used to position the third-person camera.
+	// Returns the retained spring arm component from the existing character BP.
 	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 
-	// Returns the gameplay camera attached to the spring arm.
+	// Returns the first-person gameplay camera at eye height.
 	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 
 	// Returns the currently equipped weapon actor.
@@ -145,12 +160,52 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Death")
 	TObjectPtr<UAnimMontage> DeathMontage;
 private:
+	UPROPERTY(VisibleAnywhere, Category = "Player|FirstPerson")
+	TObjectPtr<USkeletalMeshComponent> FirstPersonArms;
+
+	UPROPERTY(VisibleAnywhere, Category = "Player|FirstPerson")
+	TObjectPtr<USkeletalMeshComponent> FirstPersonWeapon;
+
+	UPROPERTY(VisibleAnywhere, Category = "Player|FirstPerson")
+	TObjectPtr<UStaticMeshComponent> FirstPersonMagazine;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Player|FirstPerson")
+	TObjectPtr<UAnimMontage> FirstPersonFireMontage;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Player|FirstPerson")
+	TObjectPtr<UAnimMontage> FirstPersonAimedFireMontage;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Player|FirstPerson")
+	TObjectPtr<UAnimMontage> FirstPersonReloadMontage;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Player|FirstPerson")
+	TObjectPtr<UAnimSequence> FirstPersonWeaponReload;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Player|FirstPerson")
+	TObjectPtr<UAnimSequence> FirstPersonWeaponFire;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Player|FirstPerson")
+	FVector FirstPersonMeshOffset = FVector(0.f, 0.f, -160.f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "Player|FirstPerson")
+	FVector FirstPersonAimOffset = FVector(0.f, 0.f, -160.f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "Player|FirstPerson")
+	FTransform FirstPersonWeaponTransform;
+
+	FVector ViewMeshLocation = FVector::ZeroVector;
+	FVector2D LookSway = FVector2D::ZeroVector;
+	float WeaponRecoil = 0.f;
+	float CameraRecoil = 0.f;
+	float AppliedCameraRecoil = 0.f;
+	float AimBlend = 0.f;
+
 	
-	// Keeps the third-person camera behind the character while following controller rotation.
+	// Retained for the existing BP component hierarchy; disabled during BeginPlay.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player|Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<USpringArmComponent> CameraBoom;
 
-	// Provides the actual player view at the end of the spring arm.
+	// Provides the eye-height player view and first-person rendering settings.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player|Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> FollowCamera;
 

@@ -13,6 +13,9 @@
 #include "Weapon/ShooterWeaponInstance.h"
 #include "ShooterGame.h"
 #include "Engine/World.h"
+#include "Interfaces/ShooterCombatInterface.h"
+#include "Components/ShooterCombatComponent.h"
+#include "Components/ShooterInventoryComponent.h"
 #include "GameplayCueManager.h"
 
 UGA_FireWeapon::UGA_FireWeapon()
@@ -117,8 +120,27 @@ bool UGA_FireWeapon::FireSingleShot()
 		return false;
 	}
 
+	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(ShooterPawn);
+	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(ShooterPawn);
+	UShooterInventoryComponent* Inventory = EquipmentOwner != nullptr ? EquipmentOwner->GetShooterInventoryComponent() : nullptr;
+	const UShooterCombatComponent* Combat = CombatOwner != nullptr ? CombatOwner->GetShooterCombatComponent() : nullptr;
+	const FWeaponInventoryEntry* Entry = Inventory != nullptr ? Inventory->GetInventoryEntryByItemId(EquippedWeaponInstance->GetItemId()) : nullptr;
+	if (Entry == nullptr || Entry->CurrentMagazineAmmo <= 0 || (Combat != nullptr && Combat->IsReloading()))
+	{
+		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+		return false;
+	}
 	if (!CommitFireShot())
 	{
+		return false;
+	}
+	// Commit can invoke GAS callbacks; recheck the execution before mutating ammo.
+	if (!IsActive() || !Inventory->ConsumeMagazineRound(EquippedWeaponInstance->GetItemId()))
+	{
+		if (IsActive())
+		{
+			CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+		}
 		return false;
 	}
 

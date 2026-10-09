@@ -193,6 +193,14 @@ void AShooterPlayerController::HandleLook(const FInputActionValue& InputValue)
 
 void AShooterPlayerController::HandleAbilityInputPressed(FGameplayTag InputTag)
 {
+	if (InputTag == TAG_Input_Reload)
+	{
+		if (UShooterCombatComponent* Combat = GetControlledCombatComponent())
+		{
+			Combat->StartReloadInput();
+		}
+		return;
+	}
 	if (InputTag == TAG_Input_Fire)
 	{
 		if (UShooterCombatComponent* CombatComponent = GetControlledCombatComponent())

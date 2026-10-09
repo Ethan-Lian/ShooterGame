@@ -97,20 +97,4 @@ WBP 位于插件 `Content/`，遵循项目规则不进入 Git；代码仓库之�
 
 Project Settings → Plugins → Multiplayer Session：`MenuMap`、`LobbyMap`、`GameplayMap`、`LobbyPanelClass`、`InviteConfirmationClass`。项目配置在 `Config/DefaultGame.ini`，目标地图和 UI 资产仍需随项目打包。`MenuSetup` 的显式 Lobby 路径可覆盖配置；省略路径时使用配置。客户端解析的地址属于 OSS，不能用本地地图配置替代。
 
-地图配置使用实际 World asset 的完整路径。当前 `GameLevel` 是重定向资产，真实地图为 `GameLevel1`；GameplayMap 和 MapsToCook 使用后者，避免目标地图就绪判断一直等待重定向前的名字。
-
-## Verification
-
-2026-10-05：按当前 `.uproject` 的 UE 5.8.2 验证接口和实现，ShooterGameEditor / Win64 / Development 构建通过。通过运行中的 UE MCP 创建、编译并保存上述四个 WBP，在单进程 Standalone PIE 中点击验证：创建 → Lobby、离开 → Menu、再次创建，以及开始 → GameLevel1 → InGame。退出后旧大厅不再覆盖菜单，开始游戏后大厅清除并恢复 Gameplay 输入。验证结束后恢复编辑器原有的 Listen Server / 2 clients 设置；没有添加测试代码或 smoke-test 脚本。
-
-这轮 PIE 使用本地 OSS；Steam 好友接口不可用时已确认界面显示失败提示与空列表。好友邀请、跨账号加入和房间切换确认的真实 Steam 链路尚未验证。引擎本轮 PIE 禁用了 Seamless Travel，因此上述地图切换验证的是非 Seamless 路径，不能代替以下多人验收。
-
-开发者需要分别验证：
-
-1. 两个 Steam 账号：创建 → 邀请 → 加入 → 开始游戏，客户端跟随进入 Gameplay。
-2. 连续点击创建、开始和刷新好友：没有并行覆盖、重复完成或重复 Travel。
-3. 无效 / 已满 / 已关闭房间、地址解析失败和连接超时：返回可恢复阶段，随后能重新加入。
-4. 客户端离开：房主继续运行；房主离开或掉线：客户端清理并返回菜单。
-5. 接受另一房间的邀请：未确认时当前房间保留；确认后先退出旧连接，再加入新房间。
-6. Destroy 失败：CleanupFailed 阻止新请求，显式重试后恢复。
-7. Seamless Travel 后验证 PlayerState / ASC / Inventory / Pawn 生命周期；本次联机改动不代替 Gameplay 回归。
+地图配置使用实际 World asset 的完整路径。当前 GameplayMap 和 MapsToCook 均指向 `/Game/ShooterGameContent/Maps/GameLevel`，该资产是由 `Map_2-1_LineDetection_Env1` 场景保存的新正式地图，已配置 `BP_ShooterGameMode` 和两个 PlayerStart；旧游戏地图及其重定向已移除。

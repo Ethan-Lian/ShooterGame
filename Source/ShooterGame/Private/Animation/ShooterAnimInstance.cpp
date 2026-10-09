@@ -1,6 +1,9 @@
 #include "Animation/ShooterAnimInstance.h"
 #include "Character/PlayerCharacter.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Weapon/ShooterWeaponEquipmentActor.h"
 
 void UShooterAnimInstance::NativeInitializeAnimation()
 {
@@ -16,6 +19,7 @@ void UShooterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	RefreshOwningPlayerCharacter();
 
 	const APlayerCharacter* PlayerCharacter = OwningPlayerCharacter.Get();
+	UpdateLeftHandIK(PlayerCharacter);
 	if (PlayerCharacter == nullptr)
 	{
 		GroundSpeed = 0.f;
@@ -51,6 +55,36 @@ void UShooterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 APlayerCharacter* UShooterAnimInstance::GetOwningPlayerCharacter() const
 {
 	return OwningPlayerCharacter.Get();
+}
+
+void UShooterAnimInstance::UpdateLeftHandIK(const APlayerCharacter* PlayerCharacter)
+{
+	LeftHandIKAlpha = 0.f;
+	LeftHandIKTransform = FTransform::Identity;
+	if (PlayerCharacter == nullptr || GetSkelMeshComponent() != PlayerCharacter->GetMesh() || PlayerCharacter->IsDead())
+	{
+		return;
+	}
+
+	const AShooterWeaponEquipmentActor* Weapon = PlayerCharacter->GetEquippedWeapon();
+	if (Weapon == nullptr)
+	{
+		return;
+	}
+
+	const UStaticMeshComponent* WeaponMesh = Weapon->GetWeaponMesh();
+	static const FName GripSocketName(TEXT("LeftHandGrip"));
+	static const FName RightHandBoneName(TEXT("hand_r"));
+	if (!WeaponMesh->DoesSocketExist(GripSocketName))
+	{
+		return;
+	}
+
+	// Both transforms use the same rendered pose. Converting to hand_r space removes
+	// that pose; FABRIK applies the offset to the current frame's right hand.
+	LeftHandIKTransform = WeaponMesh->GetSocketTransform(GripSocketName).GetRelativeTransform(
+		PlayerCharacter->GetMesh()->GetSocketTransform(RightHandBoneName));
+	LeftHandIKAlpha = 1.f;
 }
 
 void UShooterAnimInstance::RefreshOwningPlayerCharacter()

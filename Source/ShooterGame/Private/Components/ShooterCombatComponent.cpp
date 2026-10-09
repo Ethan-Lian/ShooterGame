@@ -7,6 +7,11 @@
 #include "Interfaces/ShooterCombatInterface.h"
 #include "Interfaces/ShooterEquipmentInterface.h"
 #include "Net/UnrealNetwork.h"
+#include "Character/PlayerCharacter.h"
+#include "Components/ShooterInventoryComponent.h"
+#include "GameFramework/GameStateBase.h"
+#include "TimerManager.h"
+#include "Engine/World.h"
 
 UShooterCombatComponent::UShooterCombatComponent()
 {
@@ -19,11 +24,12 @@ void UShooterCombatComponent::GetLifetimeReplicatedProps(TArray<FLifetimePropert
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(UShooterCombatComponent, bIsAiming);
+	DOREPLIFETIME(UShooterCombatComponent, ReloadStartServerTime);
 }
 
 bool UShooterCombatComponent::StartFireInput()
 {
-	if (bIsFireInputPressed)
+	if (bIsFireInputPressed || IsWeaponInteractionBlocked() || IsReloading())
 	{
 		return false;
 	}
@@ -67,7 +73,7 @@ bool UShooterCombatComponent::StopFireInput()
 
 bool UShooterCombatComponent::StartAimInput()
 {
-	if (bIsAiming || bOwnerDeathHandled)
+	if (bIsAiming || bOwnerDeathHandled || IsReloading())
 	{
 		return false;
 	}
@@ -117,6 +123,7 @@ bool UShooterCombatComponent::HandleOwnerDeath()
 	}
 
 	bOwnerDeathHandled = true;
+	CancelReload();
 
 	const bool bFireInputStopped = bIsFireInputPressed;
 	bIsFireInputPressed = false;
@@ -139,6 +146,7 @@ void UShooterCombatComponent::HandleOwnerRespawn()
 
 void UShooterCombatComponent::UninitializeForPawn()
 {
+	CancelReload();
 	bOwnerDeathHandled = false;
 	bIsFireInputPressed = false;
 	SetAimInputPressed(false);
@@ -158,6 +166,10 @@ UShooterWeaponEquipmentComponent* UShooterCombatComponent::GetOwningWeaponEquipm
 
 void UShooterCombatComponent::HandleFireInputPressed()
 {
+	if (IsWeaponInteractionBlocked() || IsReloading())
+	{
+		return;
+	}
 	UShooterAbilitySystemComponent* ShooterASC = Cast<UShooterAbilitySystemComponent>(GetOwningAbilitySystemComponent());
 	if (ShooterASC == nullptr || ShooterASC->HasMatchingGameplayTag(TAG_State_Dead))
 	{
@@ -180,6 +192,10 @@ void UShooterCombatComponent::HandleFireInputReleased()
 
 void UShooterCombatComponent::SetAimInputPressed(bool bNewIsAiming)
 {
+	if (bNewIsAiming && (IsWeaponInteractionBlocked() || IsReloading()))
+	{
+		return;
+	}
 	if (bIsAiming == bNewIsAiming)
 	{
 		return;
@@ -230,4 +246,108 @@ void UShooterCombatComponent::ServerStartAim_Implementation()
 void UShooterCombatComponent::ServerStopAim_Implementation()
 {
 	SetAimInputPressed(false);
+}
+
+void UShooterCombatComponent::StartReloadInput()
+{
+	if (IsWeaponInteractionBlocked() || IsReloading())
+	{
+		return;
+	}
+	StopFireInput();
+	if (GetOwner()->HasAuthority())
+	{
+		BeginReload();
+	}
+	else
+	{
+		ServerReload();
+	}
+}
+
+void UShooterCombatComponent::ServerReload_Implementation()
+{
+	BeginReload();
+}
+
+void UShooterCombatComponent::BeginReload()
+{
+	APlayerCharacter* Pawn = Cast<APlayerCharacter>(GetOwner());
+	UShooterInventoryComponent* Inventory = Pawn != nullptr ? Pawn->GetInventoryComponent() : nullptr;
+	UShooterWeaponEquipmentComponent* Equipment = GetOwningWeaponEquipmentComponent();
+	if (IsWeaponInteractionBlocked() || IsReloading() || Inventory == nullptr || Equipment == nullptr
+		|| !Inventory->CanReload(Equipment->GetEquippedItemId()) || Pawn->GetReloadDuration() <= 0.f)
+	{
+		return;
+	}
+
+	ReloadItemId = Equipment->GetEquippedItemId();
+	ReloadStartServerTime = GetWorld()->GetTimeSeconds();
+	HandleFireInputReleased();
+	// Ability cancellation can synchronously uninitialize or kill this Pawn.
+	if (!IsReloading() || IsWeaponInteractionBlocked())
+	{
+		return;
+	}
+	SetAimInputPressed(false);
+	GetWorld()->GetTimerManager().SetTimer(ReloadTimer, this, &UShooterCombatComponent::FinishReload, Pawn->GetReloadDuration(), false);
+	OnRep_ReloadStartServerTime();
+	GetOwner()->ForceNetUpdate();
+}
+
+void UShooterCombatComponent::FinishReload()
+{
+	APlayerCharacter* Pawn = Cast<APlayerCharacter>(GetOwner());
+	UShooterInventoryComponent* Inventory = Pawn != nullptr ? Pawn->GetInventoryComponent() : nullptr;
+	const UShooterWeaponEquipmentComponent* Equipment = GetOwningWeaponEquipmentComponent();
+	if (!IsWeaponInteractionBlocked() && Inventory != nullptr && Equipment != nullptr && Equipment->GetEquippedItemId() == ReloadItemId)
+	{
+		Inventory->ReloadMagazine(ReloadItemId);
+	}
+	CancelReload();
+}
+
+void UShooterCombatComponent::CancelReload()
+{
+	if (GetWorld() != nullptr)
+	{
+		GetWorld()->GetTimerManager().ClearTimer(ReloadTimer);
+	}
+	ReloadItemId = INDEX_NONE;
+	if (GetOwner()->HasAuthority())
+	{
+		ReloadStartServerTime = -1.f;
+		GetOwner()->ForceNetUpdate();
+	}
+	if (APlayerCharacter* Pawn = Cast<APlayerCharacter>(GetOwner()))
+	{
+		Pawn->StopFirstPersonReload();
+	}
+}
+
+void UShooterCombatComponent::OnRep_ReloadStartServerTime()
+{
+	APlayerCharacter* Pawn = Cast<APlayerCharacter>(GetOwner());
+	if (Pawn == nullptr)
+	{
+		return;
+	}
+	if (!IsReloading())
+	{
+		Pawn->StopFirstPersonReload();
+		return;
+	}
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const float ServerTime = GameState != nullptr ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	const float Elapsed = FMath::Max(0.f, ServerTime - ReloadStartServerTime);
+	if (Elapsed < Pawn->GetReloadDuration())
+	{
+		Pawn->PlayFirstPersonReload(Elapsed);
+	}
+}
+
+void UShooterCombatComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	CancelReload();
+	Super::EndPlay(EndPlayReason);
 }

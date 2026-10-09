@@ -61,6 +61,11 @@ public:
 	// Removes a logical weapon entry from the inventory by item id.
 	bool RemoveWeaponByItemId(int32 ItemId, FWeaponInventoryEntry& OutRemovedEntry);
 
+	// Ammo truth is mutated here on authority, never in the transient WeaponInstance.
+	bool ConsumeMagazineRound(int32 ItemId);
+	bool CanReload(int32 ItemId) const;
+	bool ReloadMagazine(int32 ItemId);
+
 private:
 	// Returns the array index that owns the supplied item id.
 	int32 FindEntryArrayIndexByItemId(int32 ItemId) const;
