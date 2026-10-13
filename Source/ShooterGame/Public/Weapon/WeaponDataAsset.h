@@ -33,9 +33,6 @@ struct FWeaponFireConfig
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	FName MuzzleSocketName = TEXT("Muzzle");
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
-	FTransform MuzzleFallbackTransform = FTransform(FRotator::ZeroRotator, FVector(60.f, 0.f, 8.f));
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Effects")
 	TObjectPtr<UNiagaraSystem> MuzzleFlashEffect;
 
@@ -53,27 +50,6 @@ struct FWeaponAmmoConfig
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon", meta = (ClampMin = "0"))
 	int32 InitialReserveAmmo = 90;
-};
-
-USTRUCT(BlueprintType)
-struct FWeaponPickupData
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
-	TObjectPtr<UWeaponDataAsset> WeaponDefinition;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon", meta = (ClampMin = "0"))
-	int32 CurrentMagazineAmmo = 0;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon", meta = (ClampMin = "0"))
-	int32 CurrentReserveAmmo = 0;
-
-	// Returns whether the snapshot carries enough data to describe the equipped weapon.
-	bool HasValidDefinition() const
-	{
-		return WeaponDefinition != nullptr;
-	}
 };
 
 UCLASS(BlueprintType)

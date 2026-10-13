@@ -1,60 +1,97 @@
 #include "Weapon/ShooterWeaponEquipmentActor.h"
 
+#include "Components/SceneComponent.h"
+#include "Components/ShooterWeaponEquipmentComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Character.h"
+#include "Interfaces/ShooterEquipmentInterface.h"
+#include "Net/UnrealNetwork.h"
+#include "Weapon/WeaponDataAsset.h"
 
 AShooterWeaponEquipmentActor::AShooterWeaponEquipmentActor()
 {
+	PrimaryActorTick.bCanEverTick = false;
+	bReplicates = true;
 	SetReplicateMovement(false);
+
+	SceneRootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+	SetRootComponent(SceneRootComponent);
+
+	WeaponMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponMesh"));
+	WeaponMeshComponent->SetupAttachment(SceneRootComponent);
+	WeaponMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	WeaponMeshComponent->SetGenerateOverlapEvents(false);
+	WeaponMeshComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
+	WeaponMeshComponent->SetSimulatePhysics(false);
+	WeaponMeshComponent->SetEnableGravity(false);
+}
+
+void AShooterWeaponEquipmentActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AShooterWeaponEquipmentActor, WeaponDefinition);
+}
+
+void AShooterWeaponEquipmentActor::InitializeFromDefinition(UWeaponDataAsset* InWeaponDefinition)
+{
+	WeaponDefinition = InWeaponDefinition;
+	ApplyDefinitionPresentation();
+}
+
+FTransform AShooterWeaponEquipmentActor::GetMuzzleTransform() const
+{
+	return WeaponMeshComponent->GetSocketTransform(WeaponDefinition->FireConfig.MuzzleSocketName);
 }
 
 void AShooterWeaponEquipmentActor::EnterEquippedState(ACharacter* NewOwnerCharacter)
 {
-	if (NewOwnerCharacter == nullptr || NewOwnerCharacter->GetMesh() == nullptr || WeaponMeshComponent == nullptr)
+	// The actor pointer and its definition can arrive in either order on clients.
+	if (WeaponDefinition == nullptr || NewOwnerCharacter == nullptr || NewOwnerCharacter->GetMesh() == nullptr)
 	{
 		return;
 	}
 
 	if (HasAuthority())
 	{
-		bOnlyRelevantToOwner = false;
-		bNetUseOwnerRelevancy = false;
-		SetNetDormancy(DORM_Awake);
 		SetOwner(NewOwnerCharacter);
 		SetInstigator(NewOwnerCharacter);
 	}
 
 	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-	SetActorTickEnabled(false);
-	ApplyEquippedRuntimeState();
+	SetActorHiddenInGame(false);
 	AttachToComponent(
 		NewOwnerCharacter->GetMesh(),
 		FAttachmentTransformRules::SnapToTargetNotIncludingScale,
-		GetAttachSocketName());
-	SetActorRelativeTransform(GetEquippedRelativeTransform());
+		WeaponDefinition->CharacterAttachSocketName);
+	SetActorRelativeTransform(WeaponDefinition->WeaponMeshRelativeTransform);
 }
 
 void AShooterWeaponEquipmentActor::BeginPlay()
 {
 	Super::BeginPlay();
-	ApplyEquippedRuntimeState();
+	ApplyDefinitionPresentation();
 }
 
-void AShooterWeaponEquipmentActor::ApplyEquippedRuntimeState()
+void AShooterWeaponEquipmentActor::ApplyDefinitionPresentation()
 {
-	if (WeaponMeshComponent == nullptr)
+	if (WeaponDefinition == nullptr)
 	{
 		return;
 	}
 
-	SetActorHiddenInGame(false);
-	SetActorEnableCollision(true);
-	SetReplicateMovement(false);
 	WeaponMeshComponent->SetRelativeTransform(FTransform::Identity);
-	WeaponMeshComponent->SetSimulatePhysics(false);
-	WeaponMeshComponent->SetEnableGravity(false);
-	WeaponMeshComponent->SetPhysicsLinearVelocity(FVector::ZeroVector);
-	WeaponMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	WeaponMeshComponent->SetGenerateOverlapEvents(false);
-	WeaponMeshComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
+	WeaponMeshComponent->SetStaticMesh(WeaponDefinition->WeaponMesh.LoadSynchronous());
+}
+
+void AShooterWeaponEquipmentActor::OnRep_WeaponDefinition()
+{
+	ApplyDefinitionPresentation();
+	// Equipment owns readiness/death checks and retries attachment after data arrives.
+	if (const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(GetOwner()))
+	{
+		if (UShooterWeaponEquipmentComponent* Equipment = EquipmentOwner->GetShooterWeaponEquipmentComponent())
+		{
+			Equipment->RefreshEquipmentForPawnReady();
+		}
+	}
 }

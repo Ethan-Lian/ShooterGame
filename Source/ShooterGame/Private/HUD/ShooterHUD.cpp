@@ -4,6 +4,7 @@
 #include "Character/PlayerCharacter.h"
 #include "Components/ShooterHealthComponent.h"
 #include "HUD/ShooterHealthWidget.h"
+#include "HUD/ShooterMatchWidget.h"
 #include "ShooterGame.h"
 
 AShooterHUD::AShooterHUD()
@@ -43,6 +44,23 @@ void AShooterHUD::CreateHUDWidgets()
 		return;
 	}
 
+	// Keep match UI independent of optional health/crosshair configuration.
+	if (MatchWidgetInstance == nullptr)
+	{
+		if (MatchWidgetClass == nullptr)
+		{
+			UE_LOG(LogShooterGame, Warning, TEXT("%s has no MatchWidgetClass assigned."), *GetName());
+		}
+		else
+		{
+			MatchWidgetInstance = CreateWidget<UShooterMatchWidget>(PlayerOwner, MatchWidgetClass);
+			if (MatchWidgetInstance != nullptr)
+			{
+				MatchWidgetInstance->AddToPlayerScreen();
+			}
+		}
+	}
+
 	if (CrosshairWidgetInstance == nullptr)
 	{
 		if (CrosshairWidgetClass == nullptr)
@@ -74,6 +92,7 @@ void AShooterHUD::CreateHUDWidgets()
 			RefreshHealthBinding();
 		}
 	}
+
 }
 
 void AShooterHUD::RemoveHUDWidgets()
@@ -89,6 +108,12 @@ void AShooterHUD::RemoveHUDWidgets()
 	{
 		CrosshairWidgetInstance->RemoveFromParent();
 		CrosshairWidgetInstance = nullptr;
+	}
+
+	if (MatchWidgetInstance != nullptr)
+	{
+		MatchWidgetInstance->RemoveFromParent();
+		MatchWidgetInstance = nullptr;
 	}
 }
 

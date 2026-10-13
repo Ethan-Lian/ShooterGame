@@ -6,7 +6,7 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraComponent.h"
 #include "ShooterGame.h"
-#include "Weapon/ShooterWeaponBase.h"
+#include "Weapon/ShooterWeaponEquipmentActor.h"
 #include "Weapon/WeaponDataAsset.h"
 #include "Character/PlayerCharacter.h"
 
@@ -23,15 +23,15 @@ bool UShooterGameplayCueNotify_WeaponFire::OnExecute_Implementation(AActor* MyTa
 		Pawn->PlayFirstPersonFire();
 	}
 
-	AShooterWeaponBase* Weapon = nullptr;
+	AShooterWeaponEquipmentActor* Weapon = nullptr;
 	UStaticMeshComponent* WeaponMesh = nullptr;
 	if (!ResolveWeaponCueTarget(Parameters, Weapon, WeaponMesh))
 	{
-		UE_LOG(LogShooterGame, Warning, TEXT("WeaponFire GameplayCue skipped: EffectCauser is not a valid ShooterWeaponBase with a weapon mesh."));
+		UE_LOG(LogShooterGame, Warning, TEXT("WeaponFire GameplayCue skipped: EffectCauser has no valid equipment actor, definition or weapon mesh."));
 		return false;
 	}
 
-	const FWeaponFireConfig& FireConfig = Weapon->GetFireConfig();
+	const FWeaponFireConfig& FireConfig = Weapon->GetWeaponDefinition()->FireConfig;
 	if (FireConfig.MuzzleSocketName.IsNone() || !WeaponMesh->DoesSocketExist(FireConfig.MuzzleSocketName))
 	{
 		UE_LOG(
@@ -106,10 +106,10 @@ bool UShooterGameplayCueNotify_WeaponFire::OnExecute_Implementation(AActor* MyTa
 
 bool UShooterGameplayCueNotify_WeaponFire::ResolveWeaponCueTarget(
 	const FGameplayCueParameters& Parameters,
-	AShooterWeaponBase*& OutWeapon,
+	AShooterWeaponEquipmentActor*& OutWeapon,
 	UStaticMeshComponent*& OutWeaponMesh)
 {
-	OutWeapon = Cast<AShooterWeaponBase>(Parameters.EffectCauser.Get());
+	OutWeapon = Cast<AShooterWeaponEquipmentActor>(Parameters.EffectCauser.Get());
 	OutWeaponMesh = OutWeapon != nullptr ? OutWeapon->GetWeaponMesh() : nullptr;
-	return OutWeapon != nullptr && OutWeaponMesh != nullptr;
+	return OutWeapon != nullptr && OutWeaponMesh != nullptr && OutWeapon->GetWeaponDefinition() != nullptr;
 }

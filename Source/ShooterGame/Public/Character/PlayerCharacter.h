@@ -19,7 +19,6 @@ class UShooterHealthComponent;
 class UShooterInventoryComponent;
 class UShooterMovementStateComponent;
 class UShooterWeaponEquipmentComponent;
-class UShooterWeaponInstance;
 class UShooterPawnExtensionComponent;
 class USpringArmComponent;
 class USkeletalMeshComponent;
@@ -92,10 +91,6 @@ public:
 	// Returns the currently equipped weapon actor.
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
 	AShooterWeaponEquipmentActor* GetEquippedWeapon() const;
-
-	// Returns the logical weapon instance currently driving combat rules.
-	UFUNCTION(BlueprintPure, Category = "Player|Combat")
-	UShooterWeaponInstance* GetEquippedWeaponInstance() const;
 
 	// Returns the health adapter component used by UI and gameplay code.
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")

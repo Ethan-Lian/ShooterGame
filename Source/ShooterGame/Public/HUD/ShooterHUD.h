@@ -5,6 +5,7 @@
 
 class APawn;
 class UShooterHealthWidget;
+class UShooterMatchWidget;
 class UUserWidget;
 
 UCLASS()
@@ -30,6 +31,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "HUD")
 	TSubclassOf<UShooterHealthWidget> HealthWidgetClass;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "HUD")
+	TSubclassOf<UShooterMatchWidget> MatchWidgetClass;
+
 private:
 	// Creates all local screen-space HUD widgets once.
 	void CreateHUDWidgets();
@@ -48,4 +52,7 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<APawn> ObservedPawn;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UShooterMatchWidget> MatchWidgetInstance;
 };

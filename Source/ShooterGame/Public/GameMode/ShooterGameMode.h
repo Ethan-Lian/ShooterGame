@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameMode.h"
 #include "ShooterGameMode.generated.h"
 
 class APlayerCharacter;
@@ -9,7 +9,7 @@ class AController;
 struct FShooterPlayerDeathMessage;
 
 UCLASS()
-class SHOOTERGAME_API AShooterGameMode : public AGameModeBase
+class SHOOTERGAME_API AShooterGameMode : public AGameMode
 {
 	GENERATED_BODY()
 
@@ -30,6 +30,19 @@ protected:
 	// Delay between death starting and the next pawn being spawned.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shooter|Respawn", meta = (ClampMin = "0.0"))
 	float RespawnDelay = 5.f;
+
+	// Parent handles spawning before the server starts the match clock.
+	virtual void HandleMatchHasStarted() override;
+
+	// AGameMode polls this during InProgress and calls EndMatch when it returns true.
+	virtual bool ReadyToEndMatch_Implementation() override;
+
+	UPROPERTY(
+		EditDefaultsOnly,
+		BlueprintReadOnly,
+		Category = "Shooter|Match",
+		meta = (ClampMin = "1.0"))
+	float MatchDuration = 180.f;
 
 private:
 	// Responds to the authoritative player-death message.

@@ -12,7 +12,6 @@
 #include "Interfaces/ShooterEquipmentInterface.h"
 #include "Net/UnrealNetwork.h"
 #include "Weapon/ShooterWeaponEquipmentActor.h"
-#include "Weapon/ShooterWeaponInstance.h"
 #include "Weapon/WeaponDataAsset.h"
 #include "UObject/ConstructorHelpers.h"
 #include "ShooterGame.h"
@@ -59,17 +58,23 @@ bool UShooterWeaponEquipmentComponent::HandleOwnerDeath()
 		InventoryComponent->RemoveWeaponByItemId(EquippedItemId, RemovedEntry);
 	}
 	EquippedItemId = INDEX_NONE;
-	ClearEquippedWeaponInstance();
 	return bHadWeapon;
 }
 
-void UShooterWeaponEquipmentComponent::HandleInventoryReplicated()
+const FWeaponInventoryEntry* UShooterWeaponEquipmentComponent::GetEquippedInventoryEntry() const
 {
-	RefreshEquippedWeaponInstance();
+	const UShooterInventoryComponent* Inventory = GetOwningInventoryComponent();
+	return Inventory != nullptr ? Inventory->GetInventoryEntryByItemId(EquippedItemId) : nullptr;
 }
 
 void UShooterWeaponEquipmentComponent::RefreshEquipmentForPawnReady()
 {
+	const APlayerCharacter* OwnerPawn = Cast<APlayerCharacter>(GetOwner());
+	if (OwnerPawn == nullptr || OwnerPawn->GetPawnExtensionComponent() == nullptr || !OwnerPawn->GetPawnExtensionComponent()->IsGameplayReady())
+	{
+		return;
+	}
+
 	AActor* OwnerActor = GetOwner();
 	UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent();
 
@@ -113,14 +118,14 @@ void UShooterWeaponEquipmentComponent::RefreshEquipmentForPawnReady()
 
 		if (ACharacter* OwnerCharacter = GetOwningCharacter())
 		{
-			if (EquippedWeapon != nullptr)
-			{
-				EquippedWeapon->EnterEquippedState(OwnerCharacter);
-			}
+			EquippedWeapon->EnterEquippedState(OwnerCharacter);
 		}
 	}
 
-	RefreshEquippedWeaponInstance();
+	if (APlayerCharacter* Pawn = Cast<APlayerCharacter>(GetOwner()))
+	{
+		Pawn->RefreshFirstPersonPresentation();
+	}
 }
 
 void UShooterWeaponEquipmentComponent::UninitializeForPawn()
@@ -137,8 +142,6 @@ void UShooterWeaponEquipmentComponent::UninitializeForPawn()
 		EquippedWeapon = nullptr;
 		EquippedItemId = INDEX_NONE;
 	}
-
-	ClearEquippedWeaponInstance();
 }
 
 ACharacter* UShooterWeaponEquipmentComponent::GetOwningCharacter() const
@@ -201,17 +204,28 @@ bool UShooterWeaponEquipmentComponent::EquipInventoryItemById(int32 ItemId)
 	}
 
 	EquippedItemId = InventoryEntry->ItemId;
-	EquippedWeapon = SpawnEquippedWeaponActor(*InventoryEntry);
-	if (EquippedWeapon == nullptr)
+	AShooterWeaponEquipmentActor* SpawnedWeapon = SpawnEquippedWeaponActor(*InventoryEntry);
+	EquippedWeapon = SpawnedWeapon;
+	if (SpawnedWeapon == nullptr)
 	{
 		EquippedItemId = INDEX_NONE;
-		ClearEquippedWeaponInstance();
 		return false;
 	}
 
-	EquippedWeapon->SetPickupData(InventoryEntry->ToPickupData());
-	EquippedWeapon->EnterEquippedState(OwnerCharacter);
-	RefreshEquippedWeaponInstance();
+	// Record ownership before construction scripts and BeginPlay can call Gameplay.
+	SpawnedWeapon->FinishSpawning(OwnerCharacter->GetActorTransform());
+	if (EquippedWeapon != SpawnedWeapon || EquippedItemId != ItemId)
+	{
+		return false;
+	}
+	if (SpawnedWeapon->IsActorBeingDestroyed())
+	{
+		EquippedWeapon = nullptr;
+		EquippedItemId = INDEX_NONE;
+		return false;
+	}
+
+	SpawnedWeapon->EnterEquippedState(OwnerCharacter);
 	return true;
 }
 
@@ -224,18 +238,16 @@ AShooterWeaponEquipmentActor* UShooterWeaponEquipmentComponent::SpawnEquippedWea
 		return nullptr;
 	}
 
-	FActorSpawnParameters SpawnParameters;
-	SpawnParameters.Owner = OwnerCharacter;
-	SpawnParameters.Instigator = OwnerCharacter;
-	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	AShooterWeaponEquipmentActor* SpawnedWeapon = World->SpawnActor<AShooterWeaponEquipmentActor>(
-		Entry.EquipmentActorClass,
+	UWeaponDataAsset* WeaponDefinition = Entry.WeaponDefinition;
+	AShooterWeaponEquipmentActor* SpawnedWeapon = World->SpawnActorDeferred<AShooterWeaponEquipmentActor>(
+		WeaponDefinition->EquipmentActorClass,
 		OwnerCharacter->GetActorTransform(),
-		SpawnParameters);
+		OwnerCharacter,
+		OwnerCharacter,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (SpawnedWeapon != nullptr)
 	{
-		SpawnedWeapon->SetPickupData(Entry.ToPickupData());
+		SpawnedWeapon->InitializeFromDefinition(WeaponDefinition);
 	}
 
 	return SpawnedWeapon;
@@ -260,92 +272,21 @@ void UShooterWeaponEquipmentComponent::ClearLocalEquippedWeaponPresentation(ASho
 		LocalWeaponToClear->SetActorEnableCollision(false);
 	}
 
-	const bool bClearedCurrentWeapon = WeaponToClear == nullptr || WeaponToClear == EquippedWeapon;
-	if (bClearedCurrentWeapon)
-	{
-		// Replicated fields belong to the server. A client may temporarily unbind
-		// after receiving them and must retain them for the next ready callback.
-		ClearEquippedWeaponInstance();
-	}
-}
-
-void UShooterWeaponEquipmentComponent::RefreshEquippedWeaponInstance()
-{
-	if (APlayerCharacter* Pawn = Cast<APlayerCharacter>(GetOwner()))
-	{
-		Pawn->RefreshFirstPersonPresentation();
-	}
-	if (IsEquipmentInteractionBlocked())
-	{
-		ClearEquippedWeaponInstance();
-		return;
-	}
-
-	const UShooterInventoryComponent* InventoryComponent = GetOwningInventoryComponent();
-	const FWeaponInventoryEntry* InventoryEntry = InventoryComponent != nullptr
-		? InventoryComponent->GetInventoryEntryByItemId(EquippedItemId)
-		: nullptr;
-	if (InventoryEntry == nullptr || !InventoryEntry->IsValid())
-	{
-		ClearEquippedWeaponInstance();
-		return;
-	}
-
-	if (EquippedWeaponInstance == nullptr)
-	{
-		EquippedWeaponInstance = NewObject<UShooterWeaponInstance>(this);
-	}
-
-	EquippedWeaponInstance->InitializeFromInventoryEntry(*InventoryEntry, EquippedWeapon);
-}
-
-void UShooterWeaponEquipmentComponent::ClearEquippedWeaponInstance()
-{
-	if (EquippedWeaponInstance != nullptr)
-	{
-		EquippedWeaponInstance->ClearEquippedWeaponActor();
-	}
-
-	EquippedWeaponInstance = nullptr;
+	// Client unbinding must retain the server's replicated actor pointer and item id.
 }
 
 void UShooterWeaponEquipmentComponent::OnRep_EquippedWeapon(AShooterWeaponEquipmentActor* OldEquippedWeapon)
 {
-	const APlayerCharacter* OwnerPawn = Cast<APlayerCharacter>(GetOwner());
 	if (OldEquippedWeapon != nullptr && OldEquippedWeapon != EquippedWeapon)
 	{
 		ClearLocalEquippedWeaponPresentation(OldEquippedWeapon);
 	}
 
-	if (OwnerPawn == nullptr || OwnerPawn->GetPawnExtensionComponent() == nullptr || !OwnerPawn->GetPawnExtensionComponent()->IsGameplayReady())
-	{
-		return;
-	}
-
-	if (EquippedWeapon == nullptr)
-	{
-		if (EquippedItemId == INDEX_NONE)
-		{
-			ClearEquippedWeaponInstance();
-		}
-
-		return;
-	}
-
-	ACharacter* OwnerCharacter = GetOwningCharacter();
-	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner());
-	const UAbilitySystemComponent* AbilitySystemComponent = CombatOwner != nullptr ? CombatOwner->GetShooterAbilitySystemComponent() : nullptr;
-	if (OwnerCharacter == nullptr || (AbilitySystemComponent != nullptr && AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead)))
+	if (IsEquipmentInteractionBlocked())
 	{
 		ClearLocalEquippedWeaponPresentation();
 		return;
 	}
 
-	EquippedWeapon->EnterEquippedState(OwnerCharacter);
-	RefreshEquippedWeaponInstance();
-}
-
-void UShooterWeaponEquipmentComponent::OnRep_EquippedItemId()
-{
-	RefreshEquippedWeaponInstance();
+	RefreshEquipmentForPawnReady();
 }

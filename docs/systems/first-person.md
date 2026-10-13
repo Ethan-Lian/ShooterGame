@@ -14,6 +14,10 @@
 | 弹匣与备弹真相 | PlayerState 的 Inventory，服务器修改，OwnerOnly 复制 |
 | 换弹开始、计时、结束与取消 | Pawn 的 Combat Component，服务器计时并复制开始时间 |
 
+开火直接读取 Equipment 当前 ItemId 对应的 Inventory 条目及 WeaponDataAsset；没有 WeaponInstance 或 Actor 弹药副本。通用 `AShooterWeaponEquipmentActor` 直接继承 `AActor`，复制 WeaponDefinition 供所有观察者读取网格、附着与开火反馈配置；`BP_AK47_Equipment` 和 `DA_Weapon_AK47` 保留原名称及引用。世界枪的 `Muzzle` Socket 是枪口契约，不再使用旧原生 fallback 配置。
+
+2026-10-13，开发者确认角色的 `AK47Socket` 曾被误删；已按 `Saved/FirstPerson/weapon-coordinates.json` 恢复到 `SK_EpicCharacter_Skeleton` 的 `hand_r`，位置 `(-6.459090, 0.900607, -0.011670)` cm，旋转 `(Pitch=-0.000005, Yaw=89.999831, Roll=-4.115716)`，缩放 1。未修改模型几何或动画；恢复记录与备份在 `Saved/WeaponRefactor/`。
+
 输入配置保留原有操作，增加 `IA_Reload` → `Input.Reload` → R 键。换弹期间禁止开火和瞄准；动画时长决定换弹计时（当前约 3.13 秒），完成时一次性转移弹药。死亡、解绑和 EndPlay 取消换弹，不补充弹药。客户端按服务器开始时间播放到相应位置；没有本地预测。
 
 ## 资产

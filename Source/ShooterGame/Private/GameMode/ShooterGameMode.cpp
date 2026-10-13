@@ -6,12 +6,18 @@
 #include "Messages/ShooterGameplayMessageSubsystem.h"
 #include "TimerManager.h"
 #include "PlayerState/ShooterPlayerState.h"
+#include "GameState/ShooterGameState.h"
 
 AShooterGameMode::AShooterGameMode()
 {
 	PlayerControllerClass = AShooterPlayerController::StaticClass();
 	DefaultPawnClass = APlayerCharacter::StaticClass();
 	PlayerStateClass = AShooterPlayerState::StaticClass();
+
+	GameStateClass = AShooterGameState::StaticClass();
+
+	// This first slice uses automatic start; the travel readiness gate comes next.
+	bDelayedStart = false;
 }
 
 void AShooterGameMode::BeginPlay()
@@ -104,5 +110,31 @@ void AShooterGameMode::HandleRespawnTimerExpired(TWeakObjectPtr<AController> Con
 	}
 
 	RestartPlayer(RespawningController);
+}
 
+void AShooterGameMode::HandleMatchHasStarted()
+{
+	Super::HandleMatchHasStarted();
+
+	AShooterGameState* ShooterGameState = GetGameState<AShooterGameState>();
+
+	check(ShooterGameState);
+
+	const double ServerTime = ShooterGameState->GetServerWorldTimeSeconds();
+
+	ShooterGameState->SetMatchEndServerTime(ServerTime + MatchDuration);
+}
+
+bool AShooterGameMode::ReadyToEndMatch_Implementation()
+{
+	if (!IsMatchInProgress())
+	{
+		return false;
+	}
+
+	const AShooterGameState* ShooterGameState = GetGameState<AShooterGameState>();
+
+	check(ShooterGameState);
+
+	return ShooterGameState->HasMatchEndTime() && ShooterGameState->GetRemainingMatchTime() <= 0.0;
 }

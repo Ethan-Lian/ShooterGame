@@ -112,7 +112,7 @@ GameMode 决定重生时机；PawnExtension 只保证旧 Pawn 清理和新 Pawn 
 2. 同一个 PlayerState/ASC/Pawn 组合只能有一套 Health、Movement 和 Death Tag 绑定。
 3. Startup Ability/Effect 的长期授予状态位于 PlayerState，不因新 Pawn 重复授予。
 4. 旧 Pawn 只有仍是 ASC Avatar 时才能取消 Ability、移除 Cue 或清除 Avatar。
-5. Inventory 属于 PlayerState；Equipment Actor 和 transient WeaponInstance 属于当前 Pawn。
+5. Inventory 属于 PlayerState，拥有唯一权威弹药；Equipment Actor 属于当前 Pawn，仅引用表现定义，不保存弹药或装备实例缓存。
 6. 只有服务器可以创建/销毁权威 Equipment Actor 和修改 Inventory。
 7. `State.Dead` 是死亡事实，Character 的移动、碰撞、输入和 Montage 是表现。
 
@@ -148,6 +148,8 @@ GameMode 决定重生时机；PawnExtension 只保证旧 Pawn 清理和新 Pawn 
 | 2026-10-05，阶段 3，UE 5.7.4 Editor/Game Development 构建 | PASS | 旧玩法删除后的构建；`Saved/Stage3/Build-Editor-final.log`、`Saved/Stage3/Build-Game-final.log` |
 | 2026-10-05，阶段 3，资源迁移与全新进程加载 | PASS | 17 个相关 Blueprint 重新编译并保存，5 张项目地图加载；清除废弃资源依赖。最终全新进程检查为 0 errors / 0 warnings；`Saved/Stage3/Assets-finalize-final.log`、`Saved/Stage3/Assets-fresh-load.log` 与 `assets-fresh-load.json`。这些检查不代表 Gameplay 运行通过 |
 | 2026-10-05，精简阶段最终双人 Gameplay 回归 | 开发者确认通过 | 按下方四项清单测试后反馈“都测试成功了”；覆盖双方持枪、双向伤害/击杀、各至少两次重生恢复、死亡不掉落及无重复武器或残留表现 |
+| 2026-10-13，武器重构，UE 5.8.2 Editor/Game Development 构建 | 条件通过 | 正常构建被既有 GameMode 两处 C4458（`GameState` 遮蔽成员）阻塞；仅本次验证命令使用 `/wd4458` 后两目标成功。未修改 Target 配置或六个正在进行的 GameMode/GameState/HUD 文件；`Saved/WeaponRefactor/Build-Editor-validation.log`、`Build-Game-validation.log` |
+| 2026-10-13，武器资源迁移与全新进程加载 | PASS | 24 个相关 Blueprint 编译、4 张项目地图加载、旧武器类引用清除；原 Blueprint 与 DataAsset 引用保留。误删的角色 `AK47Socket` 按原 authoring 记录恢复；`Saved/WeaponRefactor/Assets-fresh-load.log`、`assets-fresh-load.json`、`restored-socket.json`。未执行本次双人 Gameplay 回归 |
 | Steam 好友跨设备、三人及以上观察、弱网、Dedicated Server、完整 Seamless Travel | 待分别验证 | 本次双人 Gameplay 反馈未单独说明这些场景 |
 
 ### 2026-10-05：精简阶段双人 Gameplay 回归
@@ -169,7 +171,9 @@ GameMode 决定重生时机；PawnExtension 只保证旧 Pawn 清理和新 Pawn 
 
 - Equipment 在存活 Pawn 的 ASC/组件绑定完成、Combat 死亡阻塞解除后，服务器从 `DefaultWeaponDefinition` 授予并装备一把 Hitscan 武器；原生默认值为现有 `DA_Weapon_AK47`。
 - 重复初始化沿用当前装备 Actor，不重复添加库存。Inventory 仅允许一个默认武器条目，仍保留 ItemId 与 OwnerOnly 复制；不再有槽位、拾取转移或循环切换。
-- 死亡销毁权威武器、移除对应库存项并清理 transient WeaponInstance，不生成掉落；重生重新初始化默认弹药数据，扣弹与预测尚未实现。
-- 客户端解绑或死亡只隐藏/解绑表现与清理缓存，不主动清空服务器复制的 `EquippedWeapon`、`EquippedItemId`；恢复存活状态后刷新表现。
+- 死亡销毁权威武器并移除对应库存项，不生成掉落；重生重新初始化默认弹药。服务器每次开火从 Inventory 扣一发，换弹由 Combat 计时、Inventory 转移备弹；当前没有预测。
+- 客户端解绑或死亡只隐藏/解绑表现，不主动清空服务器复制的 `EquippedWeapon`、`EquippedItemId`；恢复存活状态后刷新表现。Actor 的 WeaponDefinition 与装备指针的复制可先后到达，由 Equipment 在 Pawn ready 且存活时重试附着。
+- Equipment 用 `EquippedItemId` 直接查询 Inventory 条目；开火读取条目的 WeaponDataAsset 和当前弹药，枪口来自 Equipment Actor。没有 WeaponInstance 或弹药变化驱动的缓存刷新链路；未来条目扩展仍以 ItemId 和 Inventory 数组为基础。
 - 拾取、切槽位、丢弃、掉落表现与 Projectile 的代码、对应 Blueprint 和废弃输入已移除。Lobby 与 GameLevel1 中的旧拾取武器已清除，Steam Session/邀请/加入与必要 Travel 保留。
 - 删除前的代码、配置、文档与 ShooterGameContent 资源基线保存在本地 `Saved/CodeBaselines/stage3-20261005-102823/`；资源和维护记录仍按仓库规则保留在 Git 跟踪之外。
+- 本次武器重构的代码与资源备份、迁移记录和构建日志位于本地忽略目录 `Saved/WeaponRefactor/`。开发者仍需验证双方持枪和枪口反馈、开火扣弹、换弹与备弹、双向伤害，以及死亡重生后的装备和默认弹药恢复。

@@ -32,12 +32,13 @@ flowchart TD
 | 状态或对象 | Owner / 所在位置 | Lifetime | Authority / 写入方 | Replication / 客户端职责 |
 |---|---|---|---|---|
 | ASC、AttributeSet | `AShooterPlayerState` | 玩家状态生命周期，跨当前 Pawn 重生存在 | Gameplay 权威修改由服务器执行 | ASC 按 GAS 规则复制；Pawn 重新绑定为 Avatar |
-| 固定武器条目 | `UShooterInventoryComponent` on PlayerState | 组件跨 Pawn 存在；唯一条目在死亡时移除、新 Pawn 初始化时重新授予 | 服务器从 WeaponDataAsset 授予、删除；不支持槽位或拾取转移 | `InventoryEntries` OwnerOnly 复制，客户端刷新本地装备实例 |
+| 固定武器条目 | `UShooterInventoryComponent` on PlayerState | 组件跨 Pawn 存在；唯一条目在死亡时移除、新 Pawn 初始化时重新授予 | 服务器从 WeaponDataAsset 授予、删除并修改弹药；不支持槽位或拾取转移 | `InventoryEntries` OwnerOnly 复制，查询直接读取条目与其定义，不维护装备缓存 |
 | 当前 Avatar | `APlayerCharacter` | 单个 Pawn 的 Spawn 到 EndPlay | 服务器 Possess；两端根据已知 PlayerState/Controller 初始化表现 | Pawn 与 Controller/PlayerState 复制回调触发幂等检查 |
 | Pawn 生命周期编排 | `UShooterPawnExtensionComponent` on Character | 与当前 Pawn 相同 | 不拥有权威 Gameplay 数据，只协调当前端绑定与清理 | 组件本身不表达新的复制真相 |
-| Equipped item id | `UShooterWeaponEquipmentComponent` on Character | 当前 Pawn | 服务器授予固定武器、死亡清理 | OwnerOnly 复制，Owner 根据 Inventory 构建 transient weapon instance；客户端临时解绑不抹掉复制字段 |
-| Equipped weapon actor | 当前 Character 的 Equipment Component 创建 | 当前装备/当前 Pawn | 仅服务器 Spawn/Destroy | Actor 指针复制给客户端，客户端只刷新附着和表现 |
+| Equipped item id | `UShooterWeaponEquipmentComponent` on Character | 当前 Pawn | 服务器授予固定武器、死亡清理 | OwnerOnly 复制，用 ItemId 直接查询 Inventory；客户端临时解绑不抹掉复制字段 |
+| Equipped weapon actor | 当前 Character 的 Equipment Component 创建 | 当前装备/当前 Pawn | 仅服务器 Spawn/Destroy | Actor 指针与表现用 WeaponDefinition 复制，客户端只刷新网格、附着和反馈；Actor 不保存弹药 |
 | `State.Dead` | PlayerState-owned ASC | 由死亡 Effect 到重生重置 | ServerOnly Death Ability 应用 | 客户端监听 Tag，切换当前 Pawn 表现 |
+| MatchState / 比赛结束时间 | `AShooterGameMode` 决策，`AShooterGameState` 保存公共复制状态 | 当前游戏地图中的一场比赛 | 服务器启动、结束比赛并设置结束时间 | GameState 复制阶段与结束时间，HUD 使用同步服务器时间计算剩余秒数 |
 | Session / Lobby | `MultiplayerSession` GameInstance 子系统和 UI 边界 | GameInstance / 当前 UI 生命周期 | Host 创建 Session 并执行 ServerTravel | Join 成功后本地 PlayerController 执行 ClientTravel |
 
 ### Seamless Travel boundary
@@ -67,7 +68,8 @@ local input
   -> ShooterPlayerController routes Input.* tag
   -> Combat.StartFireInput / ServerStartFire RPC
   -> ShooterAbilitySystemComponent activates GA_FireWeapon (ServerOnly)
-  -> server-authoritative FireSingleShot
+  -> FireSingleShot reads Equipment's current Inventory entry + WeaponDataAsset
+  -> Inventory consumes one magazine round on authority
   -> hitscan trace
   -> Damage GameplayEffect / AttributeSet
   -> GameplayEvent.Death
@@ -85,10 +87,11 @@ local input
 - `State.Dead` 是死亡事实；Character 的碰撞、移动、输入和 Montage 只是当前 Pawn 的表现。
 - GameMode 负责重生规则，Ability 不直接调用 `RestartPlayer`。
 - 当前死亡处理销毁装备 Actor 并删除对应 Inventory 条目，不生成掉落；新 Pawn 自动获得默认武器。拾取、切槽位、丢弃、掉落表现和 Projectile 的代码、输入与对应资源已移除。
-- 默认武器配置在 Equipment 的 `DefaultWeaponDefinition`，原生默认值为现有 `DA_Weapon_AK47`。仍沿用 WeaponInstance、Inventory OwnerOnly 复制和服务器创建武器 Actor 的链路。服务器每次成功开火扣除 Inventory 中的一发弹药；Combat 负责换弹计时，完成后由 Inventory 将备弹转入弹匣。当前不实现开火或换弹预测。
-- `FWeaponPickupData` / `PickupData` 沿用既有序列化名称，现在仅表示装备 Actor 的武器状态快照，不再支持世界拾取。
+- 默认武器配置在 Equipment 的 `DefaultWeaponDefinition`，原生默认值为现有 `DA_Weapon_AK47`。静态配置只从 Inventory 条目引用的 WeaponDataAsset 读取，弹匣与备弹只由 Inventory 保存和修改。Combat 负责换弹计时，完成后由 Inventory 将备弹转入弹匣。当前不实现开火或换弹预测。
+- `AShooterWeaponEquipmentActor` 直接继承 `AActor`，仅负责网格、附着、枪口与表现配置复制。Equipment 在 deferred spawn 后先记录装备所有权，再执行 `FinishSpawning`；武器定义在构造脚本和 BeginPlay 前就绪。客户端在 Actor、定义和 Pawn readiness 到达后刷新表现，不依赖 Inventory 弹药复制回调。
+- 已删除 WeaponInstance、Actor 弹药快照、`FWeaponPickupData`、旧 WeaponBase 和 AK47 原生子类及 fallback 配置。`BP_AK47_Equipment` 改为继承通用 Equipment Actor，`DA_Weapon_AK47.EquipmentActorClass` 仍引用原 Blueprint；资源名、模型、动画与挂点保持原有配置。
 
-第一人称相机、自己的角色双臂、手部与枪械动画、瞄准过渡和后坐力由 `APlayerCharacter` 的原生组件与 C++ 驱动。`UShooterFirstPersonAnimInstance` 计算动画状态，`ABP_OwnFirstPerson` 只播放和混合姿势。双臂从自己的角色网格裁出，重新绑定到 Infima 模板骨架，直接使用原始动画；视角武器使用模板原枪及独立弹匣。世界装备外观已通过现有 `DA_Weapon_AK47.WeaponMesh` 换为模板枪与弹匣合并的静态版本，装备类与配置资源保留旧名称。视角表现不拥有 Gameplay 数据，服务器伤害仍使用原有装备 Actor 与世界枪口挂点。资产和生命周期契约见 [第一人称系统](../systems/first-person.md)。完整联机回归仍待开发者验证。
+第一人称相机、自己的角色双臂、手部与枪械动画、瞄准过渡和后坐力由 `APlayerCharacter` 的原生组件与 C++ 驱动。`UShooterFirstPersonAnimInstance` 计算动画状态，`ABP_OwnFirstPerson` 只播放和混合姿势。双臂从自己的角色网格裁出，重新绑定到 Infima 模板骨架，直接使用原始动画；视角武器使用模板原枪及独立弹匣。世界装备外观已通过现有 `DA_Weapon_AK47.WeaponMesh` 换为模板枪与弹匣合并的静态版本，Blueprint 与配置资源保留旧名称。视角表现不拥有 Gameplay 数据，服务器伤害使用通用 Equipment Actor 与世界枪口挂点。资产和生命周期契约见 [第一人称系统](../systems/first-person.md)。完整联机回归仍待开发者验证。
 
 第三人称左手通过世界枪的 `LeftHandGrip` Socket 保持握持：`UShooterAnimInstance` 用 C++ 计算右手骨骼空间的目标与启用权重，`ABP_Player` 在移动姿势混合之后用 FABRIK 调整左臂和手腕。该状态只服务于动画表现，不复制新的 Gameplay 数据；第一人称网格不启用此约束。挂点维护方法与验证范围见 [第一人称系统](../systems/first-person.md)。
 
@@ -122,6 +125,14 @@ Leave / failure
 
 核心 ShooterGame Module 不负责在线服务回调；插件也不决定伤害、死亡或比赛 Gameplay 状态。联机菜单、大厅、好友行和邀请确认采用 WBP Designer 布局；C++ Widget 只订阅状态和调用服务。RootWidget 管理 UI layer，UIManager 管理本地输入与旅行时的 UI 清理。
 
+## Runtime Flow 4: Match Skeleton
+
+`AShooterGameMode` 继承 `AGameMode`，配套 `AShooterGameState : AGameState`。当前第一小步沿用引擎自动开局条件：进入 `InProgress` 后完成父类出生处理，再记录 `MatchEndServerTime = ServerTime + MatchDuration`（默认 180 秒）。引擎已有的 `AGameMode::Tick` 检查 `ReadyToEndMatch`，时间到后调用 `EndMatch`，进入 `WaitingPostMatch`；项目没有新增比赛 Tick 或逐秒递减状态。
+
+`UShooterMatchWidget` 读取 GameState 快照和同步服务器时间，显示等待、倒计时与比赛结束。布局保存在 `/Game/ShooterGameContent/HUD/WBP_MatchStatus` 的 Designer，两个必需控件为 `MatchPhaseText` / `MatchTimeText`。阶段与结束时间可能分开复制，时间未到达时显示同步中。HUD 在血量配置可能提前退出之前独立创建比赛 Widget。
+
+本小步只实现比赛阶段、计时和显示；等待所有原有玩家加载、关闭中途加入、比赛结束停止战斗与重生、3 秒重生和外围出生点仍待后续接入。`WaitingPostMatch` 不代表现有战斗逻辑已经停止。详见 [比赛生命周期](../systems/match-lifecycle.md)。
+
 ## System Boundaries
 
 | 领域 | 负责 | 不负责 |
@@ -145,6 +156,8 @@ Leave / failure
 | 开火路径 | `Source/ShooterGame/Public/AbilitySystem/Abilities/GA_FireWeapon.h` |
 | 死亡到重生消息边界 | `Source/ShooterGame/Public/Messages/ShooterGameplayMessageSubsystem.h` |
 | 重生规则 | `Source/ShooterGame/Public/GameMode/ShooterGameMode.h` |
+| 比赛公共状态与服务器时钟 | `Source/ShooterGame/Public/GameState/ShooterGameState.h` |
+| 比赛状态与倒计时显示 | `Source/ShooterGame/Public/HUD/ShooterMatchWidget.h` |
 | Session / Join / Invite | `Plugins/MultiplayerSession/Source/MultiplayerSession/Public/MultiplayerSessionsSubsystem.h` |
 | Host / Leave / Invite confirmation / Travel | `Plugins/MultiplayerSession/Source/MultiplayerSession/Public/MultiplayerSessionFlowSubsystem.h` |
 | Multiplayer map configuration | `Plugins/MultiplayerSession/Source/MultiplayerSession/Public/MultiplayerSessionSettings.h` |

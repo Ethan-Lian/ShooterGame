@@ -24,7 +24,6 @@
 #include "PlayerState/ShooterPlayerState.h"
 #include "ShooterGame.h"
 #include "Weapon/ShooterWeaponEquipmentActor.h"
-#include "Weapon/ShooterWeaponInstance.h"
 
 APlayerCharacter::APlayerCharacter()
 {
@@ -127,11 +126,6 @@ UAbilitySystemComponent* APlayerCharacter::GetShooterAbilitySystemComponent() co
 AShooterWeaponEquipmentActor* APlayerCharacter::GetEquippedWeapon() const
 {
 	return WeaponEquipmentComponent != nullptr ? WeaponEquipmentComponent->GetEquippedWeapon() : nullptr;
-}
-
-UShooterWeaponInstance* APlayerCharacter::GetEquippedWeaponInstance() const
-{
-	return WeaponEquipmentComponent != nullptr ? WeaponEquipmentComponent->GetEquippedWeaponInstance() : nullptr;
 }
 
 UShooterInventoryComponent* APlayerCharacter::GetInventoryComponent() const
