@@ -6,6 +6,8 @@
 
 class APlayerCharacter;
 class AController;
+class AShooterControlPoint;
+class AShooterPlayerState;
 struct FShooterPlayerDeathMessage;
 
 UCLASS()
@@ -19,6 +21,14 @@ public:
 
 	// Schedules an automatic respawn for a controller whose pawn has entered death.
 	void RequestPlayerRespawn(AController* Controller, APlayerCharacter* DeadCharacter);
+
+	void RegisterControlPoint(AShooterControlPoint* Point);
+	void UnregisterControlPoint(AShooterControlPoint* Point);
+	void NotifyControlPointOccupancyChanged(AShooterControlPoint* Point);
+
+	virtual void RestartPlayer(AController* NewPlayer) override;
+	virtual void Logout(AController* Exiting) override;
+	virtual void EndMatch() override;
 
 	// Subscribes to gameplay messages once the world subsystem is available.
 	virtual void BeginPlay() override;
@@ -50,6 +60,23 @@ private:
 
 	// Clears the old pawn and restarts the player if the controller is still valid.
 	void HandleRespawnTimerExpired(TWeakObjectPtr<AController> Controller, TWeakObjectPtr<APlayerCharacter> DeadCharacter);
+
+	void RefreshControlPointScoring();
+
+	// settle the old player before changing timing ownership.
+	void ChangeScoringPlayer(AShooterPlayerState* NewScoringPlayer, double ServerTime);
+
+	// Does not require InProgress: EndMatch settles before changing phase.
+	void SettleControlPointScore(double ServerTime);
+	void StopControlPointScoring(double ServerTime);
+	void ScheduleNextControlPointScore();
+	void HandleControlPointScoreTimer();
+	double GetScoringServerTime() const;
+
+	TWeakObjectPtr<AShooterControlPoint> ControlPoint;
+	TWeakObjectPtr<AShooterPlayerState> ScoringPlayer;
+	double LastScoringServerTime = 0.0;
+	FTimerHandle ControlPointScoreTimerHandle;
 
 	FDelegateHandle PlayerDeathMessageListenerHandle;
 };

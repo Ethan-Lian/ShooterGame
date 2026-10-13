@@ -9,6 +9,7 @@ void AShooterGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AShooterGameState, MatchEndServerTime);
+	DOREPLIFETIME(AShooterGameState, ControlPointState);
 }
 
 void AShooterGameState::SetMatchEndServerTime(double NewEndTime)
@@ -32,4 +33,11 @@ FName AShooterGameState::GetMatchPhase() const
 bool AShooterGameState::HasMatchEndTime() const
 {
 	return MatchEndServerTime > 0.0;
+}
+
+void AShooterGameState::SetControlPointState(const FShooterControlPointState& NewState)
+{
+	check(HasAuthority());
+	ControlPointState = NewState;
+	ForceNetUpdate();
 }

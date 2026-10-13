@@ -6,6 +6,8 @@ Issue #3 第一小步：比赛阶段、180 秒计时、最小 HUD 显示。`ASho
 
 当前仍按引擎默认条件自动开局，`WaitingToStart` 可能很短。等待全体原有玩家加载、关闭新玩家加入、外围出生、3 秒重生、结束停止战斗/重生、据点积分、胜者结果与房主重开属于后续工作。比赛阶段结束不等于现有 GAS 与重生逻辑自动停止。
 
+第二步已接入 [据点计分基础框架](control-point-scoring.md)：开局重置个人积分，死亡/退出/重生完成刷新据点，结束前结清截止前的独占时间并清理计分 Timer。占用判断、时间兑换与计时玩家切换仍为开发者手写的三个 TODO，当前没有实际加分。
+
 ## Ownership and Flow
 
 ```text
@@ -30,7 +32,7 @@ AGameMode checks ReadyToStartMatch
 ## HUD and Assets
 
 - `UShooterMatchWidget` 在 `NativeConstruct` 立即刷新，在 `NativeTick` 读取当前 GameState；不保存可能随旅行失效的 GameState 缓存，不额外绑定 Delegate。
-- WBP Designer 拥有布局，C++ 只更新文字。`BindWidget` 控件名为 `MatchPhaseText` 和 `MatchTimeText`，重命名时需要同时修改 C++ 契约。
+- WBP Designer 拥有布局，C++ 只更新文字。`BindWidget` 控件名为 `MatchPhaseText`、`MatchTimeText`、`ControlPointText`、`PlayerScoreText`，重命名时需要同时修改 C++ 契约。
 - HUD 只为本地 Controller 创建 Widget，独立于准星与血量 Widget 的配置；在 `EndPlay` 移除并释放自身持有的实例。
 - Widget 资产：`/Game/ShooterGameContent/HUD/WBP_MatchStatus`，父类 `UShooterMatchWidget`。
 - `/Game/ShooterGameContent/HUD/BP_ShooterHUD.MatchWidgetClass` 指向该 WBP。

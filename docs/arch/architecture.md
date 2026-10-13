@@ -133,6 +133,8 @@ Leave / failure
 
 本小步只实现比赛阶段、计时和显示；等待所有原有玩家加载、关闭中途加入、比赛结束停止战斗与重生、3 秒重生和外围出生点仍待后续接入。`WaitingPostMatch` 不代表现有战斗逻辑已经停止。详见 [比赛生命周期](../systems/match-lifecycle.md)。
 
+第二步的 `AShooterControlPoint` 已接入 Capsule 候选跟踪与生命周期事件；GameMode 持有当前计时玩家、时间起点和单个计分 Timer，PlayerState 复用原生 Score 并持有服务器侧余数，GameState 复制据点状态。HUD 增加据点与个人积分读取。占用判断、整秒兑换和计时玩家切换由开发者补齐，并确认计分测试通过。检测体积使用独立的 ControlPoint Object Channel（`ECC_GameTraceChannel1`），避免被查询 WorldStatic/WorldDynamic/Pawn 的武器射线命中；碰撞隔离修复后的多人运行仍待复测。接口契约、调用顺序与 Editor 配置见 [据点计分框架](../systems/control-point-scoring.md)。
+
 ## System Boundaries
 
 | 领域 | 负责 | 不负责 |

@@ -4,6 +4,7 @@
 #include "ShooterMatchWidget.generated.h"
 
 class UTextBlock;
+class AShooterGameState;
 
 // Layout lives in WBP_MatchStatus; this class only reads replicated match state.
 UCLASS(Abstract)
@@ -21,6 +22,13 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> MatchTimeText;
 
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> ControlPointText;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> PlayerScoreText;
+
 private:
 	void RefreshMatchDisplay();
+	void RefreshControlPointDisplay(const AShooterGameState* ShooterGameState);
 };

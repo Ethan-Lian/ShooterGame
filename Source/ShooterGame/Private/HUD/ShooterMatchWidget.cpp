@@ -5,15 +5,16 @@
 #include "GameFramework/GameMode.h"
 #include "GameState/ShooterGameState.h"
 #include "ShooterGame.h"
+#include "PlayerState/ShooterPlayerState.h"
 
 void UShooterMatchWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	if (MatchPhaseText == nullptr || MatchTimeText == nullptr)
+	if (MatchPhaseText == nullptr || MatchTimeText == nullptr || ControlPointText == nullptr || PlayerScoreText == nullptr)
 	{
 		UE_LOG(LogShooterGame, Warning,
-			TEXT("%s requires Blueprint widgets named MatchPhaseText and MatchTimeText."), *GetName());
+			TEXT("%s requires MatchPhaseText, MatchTimeText, ControlPointText and PlayerScoreText."), *GetName());
 		SetVisibility(ESlateVisibility::Collapsed);
 		return;
 	}
@@ -68,4 +69,32 @@ void UShooterMatchWidget::RefreshMatchDisplay()
 
 	MatchPhaseText->SetText(PhaseText);
 	MatchTimeText->SetText(TimeText);
+	RefreshControlPointDisplay(ShooterGameState);
+}
+
+void UShooterMatchWidget::RefreshControlPointDisplay(const AShooterGameState* ShooterGameState)
+{
+	if (ControlPointText == nullptr || PlayerScoreText == nullptr)
+	{
+		return;
+	}
+
+	FText PointText = NSLOCTEXT("ShooterMatch", "PointEmpty", "Point empty");
+	if (ShooterGameState != nullptr)
+	{
+		const FShooterControlPointState State = ShooterGameState->GetControlPointState();
+		if (State.Status == EShooterControlPointStatus::Held)
+		{
+			PointText = NSLOCTEXT("ShooterMatch", "PointHeld", "Point held");
+		}
+		else if (State.Status == EShooterControlPointStatus::Contested)
+		{
+			PointText = NSLOCTEXT("ShooterMatch", "PointContested", "Point contested - scoring paused");
+		}
+	}
+	ControlPointText->SetText(PointText);
+
+	const AShooterPlayerState* PlayerState = GetOwningPlayerState<AShooterPlayerState>();
+	const FText Score = PlayerState != nullptr ? FText::AsNumber(PlayerState->GetScore()) : FText::FromString(TEXT("--"));
+	PlayerScoreText->SetText(FText::Format(NSLOCTEXT("ShooterMatch", "PlayerScore", "Your score: {0}"), Score));
 }
