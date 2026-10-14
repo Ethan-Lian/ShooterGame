@@ -2,7 +2,6 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/ShooterGameplayTags.h"
-#include "Components/ShooterCombatComponent.h"
 #include "Components/ShooterInventoryComponent.h"
 #include "Components/ShooterPawnExtensionComponent.h"
 #include "Character/PlayerCharacter.h"
@@ -149,12 +148,6 @@ ACharacter* UShooterWeaponEquipmentComponent::GetOwningCharacter() const
 	return Cast<ACharacter>(GetOwner());
 }
 
-UShooterCombatComponent* UShooterWeaponEquipmentComponent::GetOwningCombatComponent() const
-{
-	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner());
-	return CombatOwner != nullptr ? CombatOwner->GetShooterCombatComponent() : nullptr;
-}
-
 UShooterInventoryComponent* UShooterWeaponEquipmentComponent::GetOwningInventoryComponent() const
 {
 	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(GetOwner());
@@ -163,11 +156,7 @@ UShooterInventoryComponent* UShooterWeaponEquipmentComponent::GetOwningInventory
 
 bool UShooterWeaponEquipmentComponent::IsEquipmentInteractionBlocked() const
 {
-	if (const UShooterCombatComponent* CombatComponent = GetOwningCombatComponent())
-	{
-		return CombatComponent->IsWeaponInteractionBlocked();
-	}
-
+	// Pawn initialization can precede InProgress; equipment follows life state, not match phase.
 	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(GetOwner());
 	if (CombatOwner == nullptr)
 	{

@@ -3,6 +3,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Character/PlayerCharacter.h"
 #include "Components/ShooterHealthComponent.h"
+#include "Controller/ShooterPlayerController.h"
 #include "HUD/ShooterHealthWidget.h"
 #include "HUD/ShooterMatchWidget.h"
 #include "ShooterGame.h"
@@ -33,8 +34,47 @@ void AShooterHUD::BeginPlay()
 
 void AShooterHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (bMatchEndedPresentation && PlayerOwner != nullptr)
+	{
+		// Balance only this HUD's ignore-input requests; the next world owns its mode.
+		PlayerOwner->SetIgnoreMoveInput(false);
+		PlayerOwner->SetIgnoreLookInput(false);
+		bMatchEndedPresentation = false;
+	}
 	RemoveHUDWidgets();
 	Super::EndPlay(EndPlayReason);
+}
+
+void AShooterHUD::SetMatchEndedPresentation(bool bMatchEnded, UUserWidget* FocusWidget)
+{
+	if (bMatchEndedPresentation == bMatchEnded || PlayerOwner == nullptr || !PlayerOwner->IsLocalController())
+	{
+		return;
+	}
+	bMatchEndedPresentation = bMatchEnded;
+	PlayerOwner->SetIgnoreMoveInput(bMatchEnded);
+	PlayerOwner->SetIgnoreLookInput(bMatchEnded);
+	PlayerOwner->SetShowMouseCursor(bMatchEnded);
+	if (bMatchEnded)
+	{
+		CastChecked<AShooterPlayerController>(PlayerOwner)->ClearMatchInput();
+		FInputModeUIOnly InputMode;
+		InputMode.SetWidgetToFocus(FocusWidget->TakeWidget());
+		PlayerOwner->SetInputMode(InputMode);
+	}
+	else
+	{
+		PlayerOwner->SetInputMode(FInputModeGameOnly());
+	}
+	const ESlateVisibility Visibility = bMatchEnded ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible;
+	if (CrosshairWidgetInstance != nullptr)
+	{
+		CrosshairWidgetInstance->SetVisibility(Visibility);
+	}
+	if (HealthWidgetInstance != nullptr)
+	{
+		HealthWidgetInstance->SetVisibility(Visibility);
+	}
 }
 
 void AShooterHUD::CreateHUDWidgets()

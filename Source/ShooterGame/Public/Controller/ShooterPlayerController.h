@@ -31,6 +31,9 @@ public:
 	// Notifies the screen HUD when local pawn ownership changes.
 	virtual void SetPawn(APawn* InPawn) override;
 
+	// Clears locally held actions before the results screen takes keyboard focus.
+	void ClearMatchInput();
+
 protected:
 	// Data asset that owns mapping contexts plus native and ability input actions.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")

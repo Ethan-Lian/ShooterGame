@@ -5,6 +5,8 @@
 
 class UTextBlock;
 class AShooterGameState;
+class UBorder;
+class UShooterMatchResultsWidget;
 
 // Layout lives in WBP_MatchStatus; this class only reads replicated match state.
 UCLASS(Abstract)
@@ -28,7 +30,18 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> PlayerScoreText;
 
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> LeadingScoreText;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UBorder> MatchPanel;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UShooterMatchResultsWidget> ResultsWidget;
+
 private:
 	void RefreshMatchDisplay();
 	void RefreshControlPointDisplay(const AShooterGameState* ShooterGameState);
+	// Switch HUD, pending results, and finalized results.
+	void RefreshResultsDisplay(const AShooterGameState* State);
 };

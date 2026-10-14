@@ -10,6 +10,7 @@
 #include "Character/PlayerCharacter.h"
 #include "Components/ShooterInventoryComponent.h"
 #include "GameFramework/GameStateBase.h"
+#include "GameState/ShooterGameState.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
 
@@ -144,6 +145,13 @@ void UShooterCombatComponent::HandleOwnerRespawn()
 	SetAimInputPressed(false);
 }
 
+void UShooterCombatComponent::HandleMatchEnded()
+{
+	CancelReload();
+	bIsFireInputPressed = false;
+	SetAimInputPressed(false);
+}
+
 void UShooterCombatComponent::UninitializeForPawn()
 {
 	CancelReload();
@@ -217,7 +225,9 @@ bool UShooterCombatComponent::IsWeaponInteractionBlocked() const
 	}
 
 	const UAbilitySystemComponent* AbilitySystemComponent = GetOwningAbilitySystemComponent();
-	return AbilitySystemComponent != nullptr && AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead);
+	const AShooterGameState* ShooterGameState = GetWorld()->GetGameState<AShooterGameState>();
+	return (AbilitySystemComponent != nullptr && AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead))
+		|| ShooterGameState == nullptr || !ShooterGameState->IsMatchGameplayAllowed();
 }
 
 void UShooterCombatComponent::OnRep_IsAiming()

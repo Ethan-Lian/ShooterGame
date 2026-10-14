@@ -14,7 +14,7 @@ class SHOOTERGAME_API UShooterMovementStateComponent : public UActorComponent
 public:
 	UShooterMovementStateComponent();
 
-	// Caches movement input so sprint can enforce its forward-only rule.
+	// Caches movement input so sprint can enforce its forward-facing cone.
 	void HandleMoveInput(const FVector2D& InputValue);
 
 	// Records sprint input and tries to activate the sprint ability when movement direction allows it.
@@ -35,7 +35,7 @@ public:
 	// Returns whether this component currently has an ASC binding.
 	bool IsInitializedWithAbilitySystem() const { return AbilitySystemComponent != nullptr; }
 
-	// Returns whether current input is forward-only enough to enter or keep sprinting.
+	// Allows forward movement and diagonals up to 45 degrees to either side.
 	UFUNCTION(BlueprintPure, Category = "Shooter|Movement")
 	bool IsSprintDirectionAllowed() const;
 
@@ -66,7 +66,7 @@ private:
 	UFUNCTION(Server, Reliable)
 	void ServerSetSprintInputPressed(bool bNewSprintInputPressed, FVector2D MoveInput);
 
-	// Keeps the server-side forward-only sprint rule matched to the owning client's move input.
+	// Keeps the server-side sprint cone matched to the owning client's move input.
 	UFUNCTION(Server, Reliable)
 	void ServerUpdateSprintMoveInput(FVector2D MoveInput);
 

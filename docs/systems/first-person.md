@@ -43,6 +43,14 @@ Owner 看见第一人称双臂和枪，其他玩家看见原世界角色和模�
 
 双臂的当前 authoring 流程为 `inspect_hand_binding.py` → `fit_hand_reference.py` → `create_calibrated_arms.py` → `finalize_hand_binding.py`。前臂按模板实际骨段长度缩放；掌心连续拟合，手指保留原网格体积；蒙皮按模板表面逐顶点转移，并分别处理左右手与各手指。不要重新执行旧 `create_own_arms.py` 覆盖当前资源：仅按骨骼名称转换原绑定会产生手腕与掌心变形。材质槽保持原角色的 Tunic、SleevesShorts、Skin 分配，顶点颜色保持白色；旧候选网格曾把所有渲染区块分配到 Tunic，因此旧截图里的蓝绿色手部并非正确皮肤材质。
 
+## 冲刺方向与蹲下视点
+
+Sprint 允许相机前方左右各 45° 内的移动输入，包括 W、WA、WD；纯侧向与后退输入取消冲刺。方向规则由 `ShooterMovementStateComponent` 统一提供给本地预测与服务器，第一人称 ABP 继续读取 `bIsSprinting` 混合原有 Run 动画。
+
+`BP_PlayerCharacter` 的站立胶囊半高为 88 cm、站立 `BaseEyeHeight` 为 64 cm；蹲下胶囊半高调整为 60 cm、`CrouchedEyeHeight` 为 48 cm。平地视点离地高度因此从 152 cm 降到 108 cm，落差为 44 cm。胶囊尺寸和能否站起仍由 CharacterMovement 处理；`OnStartCrouch` / `OnEndCrouch` 抵消胶囊中心与眼高的瞬时位移，随后仅平滑衰减视点补偿，不平滑整个角色移动。快速反向切换沿用剩余补偿；低顶下站起失败时不开始站起镜头过渡。
+
+`CrouchCameraInterpSpeed` 位于角色的 `Player|Camera` 配置，默认 12。第一人称双臂随相机移动；`GetPawnViewLocation` 与服务器相机使用相同补偿，供瞄准追踪读取。本次已通过 MCP 核对原 ABP 连线并保存角色资源；最终镜头手感、低顶净空及多人瞄准仍需开发者在游戏内验证。角色资源修改前的备份在 `Saved/SprintCrouchFix/Before`，不进入 Git。
+
 ## 第三人称左手握枪 IK
 
 世界枪新增 `LeftHandGrip` Socket，定义的是左手 `hand_l` 骨骼的目标姿势，不是掌心表面的接触点。初始位置约 `(4.992082, 27.895344, -3.703362)` cm，位置和旋转从原角色 `Idle_equip_ak47` 第 0 帧、原 `AK47Socket` 与装备相对变换推导，保留静止握枪的手腕姿势。校准 authoring 在 `Saved/FirstPerson/create_left_hand_grip.py`，只用于生成资产，运行时不执行。

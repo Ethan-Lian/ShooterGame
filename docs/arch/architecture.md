@@ -135,6 +135,8 @@ Leave / failure
 
 第二步的 `AShooterControlPoint` 已接入 Capsule 候选跟踪与生命周期事件；GameMode 持有当前计时玩家、时间起点和单个计分 Timer，PlayerState 复用原生 Score 并持有服务器侧余数，GameState 复制据点状态。HUD 增加据点与个人积分读取。占用判断、整秒兑换和计时玩家切换由开发者补齐，并确认计分测试通过。检测体积使用独立的 ControlPoint Object Channel（`ECC_GameTraceChannel1`），避免被查询 WorldStatic/WorldDynamic/Pawn 的武器射线命中；碰撞隔离修复后的多人运行仍待复测。接口契约、调用顺序与 Editor 配置见 [据点计分框架](../systems/control-point-scoring.md)。
 
+第三步增加 GameState-owned 的 `FShooterMatchResults` 值快照、动作截止检查、GameMode-owned 重生 Timer 和结算 WBP 数据接口。MatchWidget 继续读取快照；ResultsWidget 管理结果行展示，HUD 管理本地输入与准星/血量显示。三个开发者入口尚待补齐，不能把现有 WaitingPostMatch 或框架构建通过理解为结算与结束清理已完整运行。职责和资产契约见 [结算与 UI 框架](../systems/match-results.md)。
+
 ## System Boundaries
 
 | 领域 | 负责 | 不负责 |

@@ -19,6 +19,9 @@ public:
 	// Rebinds local HUD data to the pawn currently owned by this player's controller.
 	void SetObservedPawn(APawn* NewPawn);
 
+	// Idempotent local presentation; does not decide or change match results.
+	void SetMatchEndedPresentation(bool bMatchEnded, UUserWidget* FocusWidget);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -55,4 +58,6 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UShooterMatchWidget> MatchWidgetInstance;
+
+	bool bMatchEndedPresentation = false;
 };

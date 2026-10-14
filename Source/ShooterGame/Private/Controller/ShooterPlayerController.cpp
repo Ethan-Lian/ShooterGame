@@ -167,6 +167,22 @@ bool AShooterPlayerController::IsControlledPawnDead() const
 	return AbilitySystemComponent != nullptr && AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead);
 }
 
+void AShooterPlayerController::ClearMatchInput()
+{
+	if (UShooterCombatComponent* Combat = GetControlledCombatComponent())
+	{
+		Combat->HandleMatchEnded();
+	}
+	if (UShooterMovementStateComponent* Movement = GetControlledMovementStateComponent())
+	{
+		Movement->StopSprintInput();
+	}
+	if (UShooterAbilitySystemComponent* ASC = GetControlledShooterAbilitySystemComponent())
+	{
+		ASC->ClearAbilityInput();
+	}
+}
+
 void AShooterPlayerController::HandleMove(const FInputActionValue& InputValue)
 {
 	if (APlayerCharacter* PlayerCharacter = GetPlayerCharacter())

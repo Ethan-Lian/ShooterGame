@@ -5,7 +5,6 @@
 
 class ACharacter;
 class AShooterWeaponEquipmentActor;
-class UShooterCombatComponent;
 class UShooterInventoryComponent;
 class UWeaponDataAsset;
 struct FWeaponInventoryEntry;
@@ -49,13 +48,10 @@ private:
 	// Resolves the owning character used for attachment and character movement data.
 	ACharacter* GetOwningCharacter() const;
 
-	// Resolves the combat component that owns combat-state blocking rules.
-	UShooterCombatComponent* GetOwningCombatComponent() const;
-
 	// Resolves the PlayerState-owned inventory component that owns logical weapons.
 	UShooterInventoryComponent* GetOwningInventoryComponent() const;
 
-	// Returns whether equipment interactions should currently be blocked.
+	// Checks owner/death state independently of match phase; readiness is checked before initialization.
 	bool IsEquipmentInteractionBlocked() const;
 
 	// Equips the logical inventory entry addressed by its stable item id.

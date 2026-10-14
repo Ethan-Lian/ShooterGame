@@ -9,6 +9,7 @@ class AController;
 class AShooterControlPoint;
 class AShooterPlayerState;
 struct FShooterPlayerDeathMessage;
+struct FShooterMatchResults;
 
 UCLASS()
 class SHOOTERGAME_API AShooterGameMode : public AGameMode
@@ -61,6 +62,13 @@ private:
 	// Clears the old pawn and restarts the player if the controller is still valid.
 	void HandleRespawnTimerExpired(TWeakObjectPtr<AController> Controller, TWeakObjectPtr<APlayerCharacter> DeadCharacter);
 
+	// Collect integer scores, mark every tied leader, then sort.
+	FShooterMatchResults BuildMatchResults() const;
+
+	// Called after Super::EndMatch closes the gameplay phase.
+	void StopMatchGameplay();
+	void ClearRespawnTimers();
+
 	void RefreshControlPointScoring();
 
 	// settle the old player before changing timing ownership.
@@ -77,6 +85,7 @@ private:
 	TWeakObjectPtr<AShooterPlayerState> ScoringPlayer;
 	double LastScoringServerTime = 0.0;
 	FTimerHandle ControlPointScoreTimerHandle;
+	TMap<TWeakObjectPtr<AController>, FTimerHandle> RespawnTimers;
 
 	FDelegateHandle PlayerDeathMessageListenerHandle;
 };

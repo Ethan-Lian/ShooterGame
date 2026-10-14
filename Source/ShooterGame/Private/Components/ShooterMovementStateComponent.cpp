@@ -6,6 +6,8 @@
 #include "AbilitySystemComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameState/ShooterGameState.h"
+#include "Engine/World.h"
 
 UShooterMovementStateComponent::UShooterMovementStateComponent()
 {
@@ -139,9 +141,9 @@ void UShooterMovementStateComponent::UninitializeFromAbilitySystem()
 bool UShooterMovementStateComponent::IsSprintDirectionAllowed() const
 {
 	constexpr float ForwardThreshold = 0.5f;
-	constexpr float SidewaysTolerance = 0.25f;
 
-	return LastMoveInput.Y > ForwardThreshold && FMath::Abs(LastMoveInput.X) <= SidewaysTolerance;
+	// Include keyboard diagonals in the forward 90-degree sprint cone.
+	return LastMoveInput.Y > ForwardThreshold && FMath::Abs(LastMoveInput.X) <= LastMoveInput.Y;
 }
 
 bool UShooterMovementStateComponent::IsSprinting() const
@@ -177,7 +179,9 @@ void UShooterMovementStateComponent::HandleMaxWalkSpeedChanged(const FOnAttribut
 
 bool UShooterMovementStateComponent::RefreshSprintAbilityState()
 {
-	if (!bSprintInputPressed || !IsSprintDirectionAllowed())
+	const AShooterGameState* ShooterGameState = GetWorld()->GetGameState<AShooterGameState>();
+	if (!bSprintInputPressed || !IsSprintDirectionAllowed()
+		|| ShooterGameState == nullptr || !ShooterGameState->IsMatchGameplayAllowed())
 	{
 		return CancelSprintAbility();
 	}

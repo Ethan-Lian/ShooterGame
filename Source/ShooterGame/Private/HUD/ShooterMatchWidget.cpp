@@ -1,6 +1,10 @@
 #include "HUD/ShooterMatchWidget.h"
 
 #include "Components/TextBlock.h"
+#include "Components/Border.h"
+#include "GameFramework/PlayerController.h"
+#include "HUD/ShooterHUD.h"
+#include "HUD/ShooterMatchResultsWidget.h"
 #include "Engine/World.h"
 #include "GameFramework/GameMode.h"
 #include "GameState/ShooterGameState.h"
@@ -11,14 +15,16 @@ void UShooterMatchWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	if (MatchPhaseText == nullptr || MatchTimeText == nullptr || ControlPointText == nullptr || PlayerScoreText == nullptr)
+	if (MatchPhaseText == nullptr || MatchTimeText == nullptr || ControlPointText == nullptr || PlayerScoreText == nullptr
+		|| LeadingScoreText == nullptr || MatchPanel == nullptr || ResultsWidget == nullptr)
 	{
 		UE_LOG(LogShooterGame, Warning,
-			TEXT("%s requires MatchPhaseText, MatchTimeText, ControlPointText and PlayerScoreText."), *GetName());
+			TEXT("%s is missing a required match HUD or results widget binding."), *GetName());
 		SetVisibility(ESlateVisibility::Collapsed);
 		return;
 	}
 
+	ResultsWidget->SetVisibility(ESlateVisibility::Collapsed);
 	RefreshMatchDisplay();
 }
 
@@ -70,6 +76,7 @@ void UShooterMatchWidget::RefreshMatchDisplay()
 	MatchPhaseText->SetText(PhaseText);
 	MatchTimeText->SetText(TimeText);
 	RefreshControlPointDisplay(ShooterGameState);
+	RefreshResultsDisplay(ShooterGameState);
 }
 
 void UShooterMatchWidget::RefreshControlPointDisplay(const AShooterGameState* ShooterGameState)
@@ -97,4 +104,57 @@ void UShooterMatchWidget::RefreshControlPointDisplay(const AShooterGameState* Sh
 	const AShooterPlayerState* PlayerState = GetOwningPlayerState<AShooterPlayerState>();
 	const FText Score = PlayerState != nullptr ? FText::AsNumber(PlayerState->GetScore()) : FText::FromString(TEXT("--"));
 	PlayerScoreText->SetText(FText::Format(NSLOCTEXT("ShooterMatch", "PlayerScore", "Your score: {0}"), Score));
+
+	int32 LeadingScore = 0;
+	if (ShooterGameState != nullptr)
+	{
+		for (const APlayerState* Candidate : ShooterGameState->PlayerArray)
+		{
+			if (Candidate != nullptr && !Candidate->IsOnlyASpectator() && !Candidate->IsInactive())
+			{
+				LeadingScore = FMath::Max(LeadingScore, FMath::RoundToInt(Candidate->GetScore()));
+			}
+		}
+	}
+	LeadingScoreText->SetText(FText::Format(NSLOCTEXT("ShooterMatch", "LeadingScore", "Leading score: {0}"), FText::AsNumber(LeadingScore)));
+}
+
+void UShooterMatchWidget::RefreshResultsDisplay(const AShooterGameState* State)
+{
+	const bool bMatchEnded =
+		State != nullptr
+		&& State->GetMatchPhase() == MatchState::WaitingPostMatch;
+
+	MatchPanel->SetVisibility(
+		bMatchEnded
+			? ESlateVisibility::Collapsed
+			: ESlateVisibility::SelfHitTestInvisible);
+
+	ResultsWidget->SetVisibility(
+		bMatchEnded
+			? ESlateVisibility::SelfHitTestInvisible
+			: ESlateVisibility::Collapsed);
+	
+	if (APlayerController* Controller = GetOwningPlayer())
+	{
+		if (AShooterHUD* HUD = Controller->GetHUD<AShooterHUD>())
+		{
+			HUD->SetMatchEndedPresentation(bMatchEnded,ResultsWidget);
+		}
+	}
+	
+	if (!bMatchEnded)
+	{
+		return;
+	}
+
+	const FShooterMatchResults& Results = State->GetMatchResults();
+
+	if (!Results.bIsFinalized)
+	{
+		ResultsWidget->ShowPendingResults();
+		return;
+	}
+
+	ResultsWidget->ShowResults(Results);
 }

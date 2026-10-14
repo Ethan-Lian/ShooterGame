@@ -39,6 +39,8 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 	virtual FVector GetPawnViewLocation() const override;
 	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 
 	// Local view feedback. Damage traces continue to use the world weapon.
 	void PlayFirstPersonFire();
@@ -194,6 +196,12 @@ private:
 	float CameraRecoil = 0.f;
 	float AppliedCameraRecoil = 0.f;
 	float AimBlend = 0.f;
+
+	// Cancels the capsule/eye-height step, then decays toward the actual stance.
+	float CrouchCameraOffset = 0.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Player|Camera", meta = (ClampMin = "1.0"))
+	float CrouchCameraInterpSpeed = 12.f;
 
 	
 	// Retained for the existing BP component hierarchy; disabled during BeginPlay.

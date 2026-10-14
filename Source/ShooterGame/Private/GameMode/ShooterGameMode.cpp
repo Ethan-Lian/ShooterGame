@@ -9,6 +9,10 @@
 #include "GameState/ShooterGameState.h"
 #include "Gameplay/ShooterControlPoint.h"
 #include "ShooterGame.h"
+#include "AbilitySystem/ShooterAbilitySystemComponent.h"
+#include "Components/ShooterCombatComponent.h"
+#include "Components/ShooterMovementStateComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 AShooterGameMode::AShooterGameMode()
 {
@@ -37,6 +41,7 @@ void AShooterGameMode::BeginPlay()
 
 void AShooterGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ClearRespawnTimers();
 	GetWorldTimerManager().ClearTimer(ControlPointScoreTimerHandle);
 	ScoringPlayer.Reset();
 	ControlPoint.Reset();
@@ -52,13 +57,19 @@ void AShooterGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AShooterGameMode::RequestPlayerRespawn(AController* Controller, APlayerCharacter* DeadCharacter)
 {
-	if (Controller == nullptr)
+	const AShooterGameState* ShooterGameState = GetGameState<AShooterGameState>();
+	if (Controller == nullptr || !ShooterGameState->IsMatchGameplayAllowed())
 	{
 		return;
 	}
 
 	const TWeakObjectPtr<AController> WeakController(Controller);
 	const TWeakObjectPtr<APlayerCharacter> WeakDeadCharacter(DeadCharacter);
+	if (FTimerHandle* ExistingTimer = RespawnTimers.Find(WeakController))
+	{
+		GetWorldTimerManager().ClearTimer(*ExistingTimer);
+		RespawnTimers.Remove(WeakController);
+	}
 	if (RespawnDelay <= 0.f)
 	{
 		HandleRespawnTimerExpired(WeakController, WeakDeadCharacter);
@@ -72,7 +83,7 @@ void AShooterGameMode::RequestPlayerRespawn(AController* Controller, APlayerChar
 		WeakController,
 		WeakDeadCharacter);
 
-	FTimerHandle RespawnTimerHandle;
+	FTimerHandle& RespawnTimerHandle = RespawnTimers.FindOrAdd(WeakController);
 	GetWorldTimerManager().SetTimer(RespawnTimerHandle, RespawnDelegate, RespawnDelay, false);
 }
 
@@ -87,6 +98,11 @@ void AShooterGameMode::HandlePlayerDeathMessage(const FShooterPlayerDeathMessage
 
 void AShooterGameMode::HandleRespawnTimerExpired(TWeakObjectPtr<AController> Controller, TWeakObjectPtr<APlayerCharacter> DeadCharacter)
 {
+	RespawnTimers.Remove(Controller);
+	if (!GetGameState<AShooterGameState>()->IsMatchGameplayAllowed())
+	{
+		return;
+	}
 	AController* RespawningController = Controller.Get();
 	if (RespawningController == nullptr)
 	{
@@ -133,6 +149,7 @@ void AShooterGameMode::HandleMatchHasStarted()
 	const double ServerTime = ShooterGameState->GetServerWorldTimeSeconds();
 
 	ShooterGameState->SetMatchEndServerTime(ServerTime + MatchDuration);
+	ShooterGameState->ResetMatchResults();
 
 	for (APlayerState* PlayerState : ShooterGameState->PlayerArray)
 	{
@@ -190,6 +207,10 @@ void AShooterGameMode::NotifyControlPointOccupancyChanged(AShooterControlPoint* 
 
 void AShooterGameMode::RestartPlayer(AController* NewPlayer)
 {
+	if (HasMatchEnded())
+	{
+		return;
+	}
 	Super::RestartPlayer(NewPlayer);
 	// Spawn overlaps can fire before Possess has supplied PlayerState/ASC.
 	RefreshControlPointScoring();
@@ -197,6 +218,12 @@ void AShooterGameMode::RestartPlayer(AController* NewPlayer)
 
 void AShooterGameMode::Logout(AController* Exiting)
 {
+	const TWeakObjectPtr<AController> WeakController(Exiting);
+	if (FTimerHandle* Timer = RespawnTimers.Find(WeakController))
+	{
+		GetWorldTimerManager().ClearTimer(*Timer);
+		RespawnTimers.Remove(WeakController);
+	}
 	if (AShooterControlPoint* Point = ControlPoint.Get(); Point != nullptr && Exiting != nullptr)
 	{
 		Point->RemoveCharacter(Cast<APlayerCharacter>(Exiting->GetPawn()));
@@ -206,11 +233,96 @@ void AShooterGameMode::Logout(AController* Exiting)
 
 void AShooterGameMode::EndMatch()
 {
-	if (IsMatchInProgress())
+	if (!IsMatchInProgress())
 	{
-		StopControlPointScoring(GetScoringServerTime());
+		return;
 	}
+
+	StopControlPointScoring(GetScoringServerTime());
+
+	const FShooterMatchResults Results = BuildMatchResults();
+
 	Super::EndMatch();
+
+	StopMatchGameplay();
+
+	GetGameState<AShooterGameState>()->SetMatchResults(Results);
+}
+
+FShooterMatchResults AShooterGameMode::BuildMatchResults() const
+{
+	const AShooterGameState* State = GetGameState<AShooterGameState>();
+	
+	FShooterMatchResults Results;
+	Results.bIsFinalized = true;
+	int32 HighestScore = 0;
+	
+	for (const APlayerState* player : State->PlayerArray)
+	{
+		const AShooterPlayerState* ShooterPlayer = Cast<AShooterPlayerState>(player);
+		
+		if (ShooterPlayer == nullptr
+			|| ShooterPlayer->IsOnlyASpectator()
+			|| ShooterPlayer->IsInactive())
+		{
+			continue;
+		}
+	
+		FShooterMatchResultRow& Row = Results.PlayersResultRows.AddDefaulted_GetRef();
+		Row.PlayerId = ShooterPlayer->GetPlayerId();
+		Row.PlayerName = ShooterPlayer->GetPlayerName();
+		Row.Score = FMath::RoundToInt(ShooterPlayer->GetScore());
+		
+		HighestScore = FMath::Max(HighestScore,Row.Score);
+	}
+	
+	for (FShooterMatchResultRow& Row : Results.PlayersResultRows)
+	{
+		Row.bIsWinner = Row.Score == HighestScore;
+	}
+	
+	Results.PlayersResultRows.Sort(
+		[](const FShooterMatchResultRow& A,
+		   const FShooterMatchResultRow& B)
+		{
+			return A.Score != B.Score
+				? A.Score > B.Score
+				: A.PlayerId < B.PlayerId;
+		});
+
+	return Results;
+}
+
+void AShooterGameMode::ClearRespawnTimers()
+{
+	for (auto& Entry : RespawnTimers)
+	{
+		GetWorldTimerManager().ClearTimer(Entry.Value);
+	}
+	RespawnTimers.Empty();
+}
+
+void AShooterGameMode::StopMatchGameplay()
+{
+	ClearRespawnTimers();
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PlayerController = It->Get();
+		if (AShooterPlayerState* PlayerState = PlayerController->GetPlayerState<AShooterPlayerState>())
+		{
+			UShooterAbilitySystemComponent* ASC = Cast<UShooterAbilitySystemComponent>(PlayerState->GetAbilitySystemComponent());
+			ASC->ClearAbilityInput();
+			ASC->CancelAllAbilities();
+		}
+		// Ability cancellation can change possession; resolve the current Pawn afterwards.
+		if (APlayerCharacter* Character = Cast<APlayerCharacter>(PlayerController->GetPawn()))
+		{
+			Character->GetCombatComponent()->HandleMatchEnded();
+			Character->GetMovementStateComponent()->StopSprintInput();
+			Character->GetCharacterMovement()->StopMovementImmediately();
+			Character->GetCharacterMovement()->DisableMovement();
+		}
+	}
 }
 
 void AShooterGameMode::RefreshControlPointScoring()

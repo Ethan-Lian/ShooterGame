@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameState.h"
 #include "Gameplay/ShooterControlPointTypes.h"
+#include "Gameplay/ShooterMatchResultTypes.h"
 #include "ShooterGameState.generated.h"
 
 UCLASS()
@@ -28,6 +29,13 @@ public:
 
 	double GetMatchEndServerTime() const { return MatchEndServerTime; }
 
+	// Server action paths use the deadline as well as the replicated phase.
+	bool IsMatchGameplayAllowed() const;
+
+	void ResetMatchResults();
+	void SetMatchResults(const FShooterMatchResults& NewResults);
+	const FShooterMatchResults& GetMatchResults() const { return MatchResults; }
+
 	void SetControlPointState(const FShooterControlPointState& NewState);
 
 	UFUNCTION(BlueprintPure, Category = "Shooter|ControlPoint")
@@ -39,4 +47,7 @@ private:
 
 	UPROPERTY(Replicated)
 	FShooterControlPointState ControlPointState;
+
+	UPROPERTY(Replicated)
+	FShooterMatchResults MatchResults;
 };
