@@ -11,14 +11,22 @@
 | 姿势播放和布尔混合、DefaultSlot | `ABP_OwnFirstPerson` AnimGraph，EventGraph 为空 |
 | 手部 Montage 与枪械 Sequence 播放 | `APlayerCharacter` 的 C++ 方法 |
 | 开火判定、冷却和伤害 | ServerOnly `GA_FireWeapon`，沿用原有 GAS / Hitscan |
-| 弹匣与备弹真相 | PlayerState 的 Inventory，服务器修改，OwnerOnly 复制 |
+| 弹匣数量真相 | PlayerState 的 Inventory，服务器修改，OwnerOnly 复制；备弹无限，不保存数量 |
 | 换弹开始、计时、结束与取消 | Pawn 的 Combat Component，服务器计时并复制开始时间 |
 
 开火直接读取 Equipment 当前 ItemId 对应的 Inventory 条目及 WeaponDataAsset；没有 WeaponInstance 或 Actor 弹药副本。通用 `AShooterWeaponEquipmentActor` 直接继承 `AActor`，复制 WeaponDefinition 供所有观察者读取网格、附着与开火反馈配置；`BP_AK47_Equipment` 和 `DA_Weapon_AK47` 保留原名称及引用。世界枪的 `Muzzle` Socket 是枪口契约，不再使用旧原生 fallback 配置。
 
 2026-10-13，开发者确认角色的 `AK47Socket` 曾被误删；已按 `Saved/FirstPerson/weapon-coordinates.json` 恢复到 `SK_EpicCharacter_Skeleton` 的 `hand_r`，位置 `(-6.459090, 0.900607, -0.011670)` cm，旋转 `(Pitch=-0.000005, Yaw=89.999831, Roll=-4.115716)`，缩放 1。未修改模型几何或动画；恢复记录与备份在 `Saved/WeaponRefactor/`。
 
-输入配置保留原有操作，增加 `IA_Reload` → `Input.Reload` → R 键。换弹期间禁止开火和瞄准；动画时长决定换弹计时（当前约 3.13 秒），完成时一次性转移弹药。死亡、解绑和 EndPlay 取消换弹，不补充弹药。客户端按服务器开始时间播放到相应位置；没有本地预测。
+输入配置保留原有操作，增加 `IA_Reload` → `Input.Reload` → R 键。换弹期间禁止开火和瞄准；动画时长决定换弹计时（当前约 3.13 秒），完成时直接补满弹匣。每枪仍扣一发，空仓停止开火，满弹匣不能换弹，备弹无限；已移除 `CurrentReserveAmmo` 和 `InitialReserveAmmo`。死亡、解绑、比赛结束和 EndPlay 取消换弹，不补充弹药。客户端按服务器开始时间播放到相应位置；没有本地预测。
+
+### 弹药 HUD
+
+`/Game/ShooterGameContent/HUD/WBP_ShooterAmmoWidget` 继承 `UShooterAmmoWidget`，Designer 提供 `AmmoPanel`（Border）、`AmmoCountText` 和 `ReloadHintText`（TextBlock）。`BP_ShooterHUD.AmmoWidgetClass` 指向该 WBP，右下角距边缘 32 个布局单位，显示 `30 / ∞`；空仓红色显示 `R RELOAD`，换弹期间显示 `RELOADING...`。UI 文案沿用现有 HUD 的英文。
+
+C++ 每帧只读当前本地 Pawn 的 Equipment 库存条目和 Combat 状态，不缓存条目指针、不复制或修改弹药。未 Possess、Pawn 未就绪、武器条目未同步、死亡或不允许比赛 Gameplay 时只隐藏子面板，外层 Widget 保持轮询，以便重生和复制到达后恢复。HUD 在结算时隐藏整个弹药 Widget，EndPlay 移除它；再次初始化从当前 Pawn 读取状态。
+
+2026-10-14，UE 5.8.2 Development Editor / Game 构建通过。弹药 WBP 和 HUD 在新进程中重新加载、编译、保存通过，0 errors；日志为 `Saved/AmmoHUD/Build-Editor.log`、`Build-Game.log` 和 `Assets-final-load.log`，资产配置记录为同目录 `assets-authored.json`。资源与备份保留在本地，不进入 Git。空仓、无限换弹、死亡重生、结算隐藏及双方客户端显示仍需开发者在游戏中验证。
 
 ## 资产
 

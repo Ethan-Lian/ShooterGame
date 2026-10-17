@@ -34,6 +34,9 @@ public:
 	// Clears locally held actions before the results screen takes keyboard focus.
 	void ClearMatchInput();
 
+	// Listen Server host only; the local host can call its GameMode without an RPC.
+	bool RequestPlayAgain();
+
 protected:
 	// Data asset that owns mapping contexts plus native and ability input actions.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")

@@ -46,7 +46,6 @@ bool UShooterInventoryComponent::AddWeaponFromDefinition(UWeaponDataAsset* Weapo
 	NewEntry.ItemId = NextItemId++;
 	NewEntry.WeaponDefinition = WeaponDefinition;
 	NewEntry.CurrentMagazineAmmo = WeaponDefinition->AmmoConfig.MagazineSize;
-	NewEntry.CurrentReserveAmmo = WeaponDefinition->AmmoConfig.InitialReserveAmmo;
 	InventoryEntries.Add(NewEntry);
 	OutItemId = NewEntry.ItemId;
 	return true;
@@ -93,7 +92,8 @@ bool UShooterInventoryComponent::ConsumeMagazineRound(int32 ItemId)
 bool UShooterInventoryComponent::CanReload(int32 ItemId) const
 {
 	const FWeaponInventoryEntry* Entry = GetInventoryEntryByItemId(ItemId);
-	return Entry != nullptr && Entry->WeaponDefinition != nullptr && Entry->CurrentReserveAmmo > 0
+	return Entry != nullptr
+		&& Entry->WeaponDefinition != nullptr
 		&& Entry->CurrentMagazineAmmo < Entry->WeaponDefinition->AmmoConfig.MagazineSize;
 }
 
@@ -104,9 +104,7 @@ bool UShooterInventoryComponent::ReloadMagazine(int32 ItemId)
 		return false;
 	}
 	FWeaponInventoryEntry& Entry = InventoryEntries[FindEntryArrayIndexByItemId(ItemId)];
-	const int32 Transfer = FMath::Min(Entry.WeaponDefinition->AmmoConfig.MagazineSize - Entry.CurrentMagazineAmmo, Entry.CurrentReserveAmmo);
-	Entry.CurrentMagazineAmmo += Transfer;
-	Entry.CurrentReserveAmmo -= Transfer;
+	Entry.CurrentMagazineAmmo = Entry.WeaponDefinition->AmmoConfig.MagazineSize;
 	GetOwner()->ForceNetUpdate();
 	return true;
 }

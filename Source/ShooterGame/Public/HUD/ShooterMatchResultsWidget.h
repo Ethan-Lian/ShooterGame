@@ -22,6 +22,7 @@ public:
 
 protected:
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Shooter|Match")
 	TSubclassOf<UShooterMatchResultRowWidget> ResultRowWidgetClass;
@@ -45,6 +46,12 @@ protected:
 	TObjectPtr<UButton> PlayAgainButton;
 
 private:
+	void RefreshPlayAgainState();
+
+	UFUNCTION()
+	void HandlePlayAgainClicked();
+
+	FText PlayAgainError;
 	TArray<FShooterMatchResultRow> RenderedRows;
 	int32 RenderedLocalPlayerId = INDEX_NONE;
 	bool bHasRenderedResults = false;

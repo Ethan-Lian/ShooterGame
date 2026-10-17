@@ -4,8 +4,12 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Controller/ShooterPlayerController.h"
+#include "Engine/World.h"
+#include "GameFramework/GameMode.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
+#include "GameState/ShooterGameState.h"
 #include "HUD/ShooterMatchResultRowWidget.h"
 #include "ShooterGame.h"
 
@@ -18,15 +22,72 @@ UShooterMatchResultsWidget::UShooterMatchResultsWidget(const FObjectInitializer&
 void UShooterMatchResultsWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	PlayAgainButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HandlePlayAgainClicked);
+	RefreshPlayAgainState();
+}
+
+void UShooterMatchResultsWidget::NativeDestruct()
+{
+	PlayAgainButton->OnClicked.RemoveDynamic(this, &ThisClass::HandlePlayAgainClicked);
+	Super::NativeDestruct();
+}
+
+void UShooterMatchResultsWidget::RefreshPlayAgainState()
+{
+	const AShooterPlayerController* Controller = GetOwningPlayer<AShooterPlayerController>();
+	const AShooterGameState* State = GetWorld()->GetGameState<AShooterGameState>();
+	const bool bIsHost = Controller != nullptr && Controller->HasAuthority() && Controller->IsLocalPlayerController();
+	const bool bLeavingMap = State != nullptr && State->GetMatchPhase() == MatchState::LeavingMap;
+	const bool bCanRestart = State != nullptr && State->GetMatchPhase() == MatchState::WaitingPostMatch
+		&& State->GetMatchResults().bIsFinalized;
+
+	PlayAgainButton->SetVisibility(bIsHost ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	PlayAgainButton->SetIsEnabled(bIsHost && bCanRestart);
+
+	FText Status;
+	if (bLeavingMap)
+	{
+		Status = NSLOCTEXT("ShooterMatch", "RestartLoading", "Loading the next match...");
+	}
+	else if (!bIsHost)
+	{
+		Status = NSLOCTEXT("ShooterMatch", "WaitingForHost", "Waiting for the host");
+	}
+	else if (!PlayAgainError.IsEmpty())
+	{
+		Status = PlayAgainError;
+	}
+	else
+	{
+		Status = bCanRestart
+			? NSLOCTEXT("ShooterMatch", "HostCanRestart", "Play again when you are ready")
+			: NSLOCTEXT("ShooterMatch", "HostWaitingForResults", "Waiting for final scores...");
+	}
+	HostStatusText->SetText(Status);
+}
+
+void UShooterMatchResultsWidget::HandlePlayAgainClicked()
+{
+	AShooterPlayerController* Controller = GetOwningPlayer<AShooterPlayerController>();
+	if (Controller == nullptr)
+	{
+		return;
+	}
+
+	// Prepare local presentation before travel can invoke external callbacks.
+	PlayAgainError = FText::GetEmpty();
 	PlayAgainButton->SetIsEnabled(false);
-	const APlayerController* OwnerController = GetOwningPlayer();
-	HostStatusText->SetText(OwnerController != nullptr && OwnerController->HasAuthority()
-		? NSLOCTEXT("ShooterMatch", "HostMatchFinished", "Match finished")
-		: NSLOCTEXT("ShooterMatch", "WaitingForHost", "Waiting for the host"));
+	HostStatusText->SetText(NSLOCTEXT("ShooterMatch", "RestartLoading", "Loading the next match..."));
+	if (!Controller->RequestPlayAgain())
+	{
+		PlayAgainError = NSLOCTEXT("ShooterMatch", "RestartRejected", "Could not restart the match. Try again.");
+		RefreshPlayAgainState();
+	}
 }
 
 void UShooterMatchResultsWidget::ShowPendingResults()
 {
+	RefreshPlayAgainState();
 	ResultsTitleText->SetText(NSLOCTEXT("ShooterMatch", "MatchComplete", "MATCH COMPLETE"));
 	ResultsSubtitleText->SetText(NSLOCTEXT("ShooterMatch", "SyncingResults", "Synchronizing final scores"));
 	ResultsStatusText->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
@@ -35,6 +96,8 @@ void UShooterMatchResultsWidget::ShowPendingResults()
 
 void UShooterMatchResultsWidget::ShowResults(const FShooterMatchResults& Results)
 {
+	// MatchState can change while the cached result rows remain identical.
+	RefreshPlayAgainState();
 	const APlayerState* LocalPlayerState = GetOwningPlayerState();
 	const int32 LocalPlayerId = LocalPlayerState != nullptr ? LocalPlayerState->GetPlayerId() : INDEX_NONE;
 	if (bHasRenderedResults && RenderedRows == Results.PlayersResultRows && RenderedLocalPlayerId == LocalPlayerId)

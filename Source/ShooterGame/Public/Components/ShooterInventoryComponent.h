@@ -21,10 +21,6 @@ struct FWeaponInventoryEntry
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Shooter|Inventory")
 	int32 CurrentMagazineAmmo = 0;
 
-	// The current ammo stored outside the active magazine.
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Shooter|Inventory")
-	int32 CurrentReserveAmmo = 0;
-
 	// Returns whether this entry contains a usable logical weapon.
 	bool IsValid() const;
 };

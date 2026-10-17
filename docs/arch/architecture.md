@@ -87,7 +87,8 @@ local input
 - `State.Dead` 是死亡事实；Character 的碰撞、移动、输入和 Montage 只是当前 Pawn 的表现。
 - GameMode 负责重生规则，Ability 不直接调用 `RestartPlayer`。
 - 当前死亡处理销毁装备 Actor 并删除对应 Inventory 条目，不生成掉落；新 Pawn 自动获得默认武器。拾取、切槽位、丢弃、掉落表现和 Projectile 的代码、输入与对应资源已移除。
-- 默认武器配置在 Equipment 的 `DefaultWeaponDefinition`，原生默认值为现有 `DA_Weapon_AK47`。静态配置只从 Inventory 条目引用的 WeaponDataAsset 读取，弹匣与备弹只由 Inventory 保存和修改。Combat 负责换弹计时，完成后由 Inventory 将备弹转入弹匣。当前不实现开火或换弹预测。
+- 默认武器配置在 Equipment 的 `DefaultWeaponDefinition`，原生默认值为现有 `DA_Weapon_AK47`。静态配置只从 Inventory 条目引用的 WeaponDataAsset 读取，弹匣数量只由 Inventory 保存和修改。备弹无限，不保存备弹数量；Combat 负责换弹计时，完成后由 Inventory 直接补满弹匣。当前不实现开火或换弹预测。
+- `UShooterAmmoWidget` 轮询本地当前 Pawn 的 Equipment 条目与 Combat 状态，显示弹匣数量、无限备弹标记和空仓/换弹提示。布局位于 `WBP_ShooterAmmoWidget` 的 Designer，由 HUD 创建、销毁并在结算时隐藏；UI 不修改弹药。详见 [第一人称系统](../systems/first-person.md)。
 - `AShooterWeaponEquipmentActor` 直接继承 `AActor`，仅负责网格、附着、枪口与表现配置复制。Equipment 在 deferred spawn 后先记录装备所有权，再执行 `FinishSpawning`；武器定义在构造脚本和 BeginPlay 前就绪。客户端在 Actor、定义和 Pawn readiness 到达后刷新表现，不依赖 Inventory 弹药复制回调。
 - 已删除 WeaponInstance、Actor 弹药快照、`FWeaponPickupData`、旧 WeaponBase 和 AK47 原生子类及 fallback 配置。`BP_AK47_Equipment` 改为继承通用 Equipment Actor，`DA_Weapon_AK47.EquipmentActorClass` 仍引用原 Blueprint；资源名、模型、动画与挂点保持原有配置。
 
@@ -127,15 +128,19 @@ Leave / failure
 
 ## Runtime Flow 4: Match Skeleton
 
-`AShooterGameMode` 继承 `AGameMode`，配套 `AShooterGameState : AGameState`。当前第一小步沿用引擎自动开局条件：进入 `InProgress` 后完成父类出生处理，再记录 `MatchEndServerTime = ServerTime + MatchDuration`（默认 180 秒）。引擎已有的 `AGameMode::Tick` 检查 `ReadyToEndMatch`，时间到后调用 `EndMatch`，进入 `WaitingPostMatch`；项目没有新增比赛 Tick 或逐秒递减状态。
+`AShooterGameMode` 继承 `AGameMode`，配套 `AShooterGameState : AGameState`。进入 `InProgress` 后先随机分配各自独占的出生点，再完成父类出生处理，随后记录 `MatchEndServerTime = ServerTime + MatchDuration`（默认 180 秒）。引擎已有的 `AGameMode::Tick` 检查 `ReadyToEndMatch`，时间到后调用 `EndMatch`，进入 `WaitingPostMatch`；项目没有新增比赛 Tick 或逐秒递减状态。开局要求原成员加载完成、一至四名玩家且正式出生点足够。
 
 `UShooterMatchWidget` 读取 GameState 快照和同步服务器时间，显示等待、倒计时与比赛结束。布局保存在 `/Game/ShooterGameContent/HUD/WBP_MatchStatus` 的 Designer，两个必需控件为 `MatchPhaseText` / `MatchTimeText`。阶段与结束时间可能分开复制，时间未到达时显示同步中。HUD 在血量配置可能提前退出之前独立创建比赛 Widget。
 
-本小步只实现比赛阶段、计时和显示；等待所有原有玩家加载、关闭中途加入、比赛结束停止战斗与重生、3 秒重生和外围出生点仍待后续接入。`WaitingPostMatch` 不代表现有战斗逻辑已经停止。详见 [比赛生命周期](../systems/match-lifecycle.md)。
+第一小步实现比赛阶段、计时和显示；结束停止战斗与重生已在第三步接入，第四步由开发者补齐加载等待判断。第五步接入每局固定出生点分配与 3 秒重生；关闭中途加入仍待接入。详见 [比赛生命周期](../systems/match-lifecycle.md)。
 
 第二步的 `AShooterControlPoint` 已接入 Capsule 候选跟踪与生命周期事件；GameMode 持有当前计时玩家、时间起点和单个计分 Timer，PlayerState 复用原生 Score 并持有服务器侧余数，GameState 复制据点状态。HUD 增加据点与个人积分读取。占用判断、整秒兑换和计时玩家切换由开发者补齐，并确认计分测试通过。检测体积使用独立的 ControlPoint Object Channel（`ECC_GameTraceChannel1`），避免被查询 WorldStatic/WorldDynamic/Pawn 的武器射线命中；碰撞隔离修复后的多人运行仍待复测。接口契约、调用顺序与 Editor 配置见 [据点计分框架](../systems/control-point-scoring.md)。
 
-第三步增加 GameState-owned 的 `FShooterMatchResults` 值快照、动作截止检查、GameMode-owned 重生 Timer 和结算 WBP 数据接口。MatchWidget 继续读取快照；ResultsWidget 管理结果行展示，HUD 管理本地输入与准星/血量显示。三个开发者入口尚待补齐，不能把现有 WaitingPostMatch 或框架构建通过理解为结算与结束清理已完整运行。职责和资产契约见 [结算与 UI 框架](../systems/match-results.md)。
+第三步增加 GameState-owned 的 `FShooterMatchResults` 值快照、动作截止检查、GameMode-owned 重生 Timer 和结算 WBP 数据接口。MatchWidget 继续读取快照；ResultsWidget 管理结果行展示，HUD 管理本地输入与准星/血量显示。开发者已在 `fbdcf48` 补齐结果生成、结束编排和 UI 状态选择；完整多人运行覆盖仍需验证。职责和资产契约见 [结算与 UI 框架](../systems/match-results.md)。
+
+第四步已接入房主重开按钮、PlayerController 本地权威请求、同地图 Seamless Travel 配置和新 HUD 输入恢复。WaitingPostMatch/LeavingMap 保持结果界面，旧 HUD 只清理自己的 Widget 和输入限制。GameMode 的重开校验与加载等待判断已由开发者补齐，并于 2026-10-15 反馈测试完成；具体测试拓扑未单独说明。生命周期与验证边界见 [重开流程](../systems/match-restart.md)。
+
+第五步由服务器在 `HandleMatchHasStarted` 的父类调用前打乱正式 PlayerStart 列表，每名玩家获得不同的 `Controller.StartSpot`，本局重生复用此点，重开后重新分配。无额外复制的分配表；默认重生延迟为 3 秒，GameSession 配置最多四人。外围位置由地图布置负责，忽略 PIE 临时出生点。完整契约见 [比赛生命周期](../systems/match-lifecycle.md)。
 
 ## System Boundaries
 

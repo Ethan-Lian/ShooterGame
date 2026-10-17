@@ -171,7 +171,7 @@ GameMode 决定重生时机；PawnExtension 只保证旧 Pawn 清理和新 Pawn 
 
 - Equipment 在存活 Pawn 的 ASC/组件绑定完成、Combat 死亡阻塞解除后，服务器从 `DefaultWeaponDefinition` 授予并装备一把 Hitscan 武器；原生默认值为现有 `DA_Weapon_AK47`。
 - 重复初始化沿用当前装备 Actor，不重复添加库存。Inventory 仅允许一个默认武器条目，仍保留 ItemId 与 OwnerOnly 复制；不再有槽位、拾取转移或循环切换。
-- 死亡销毁权威武器并移除对应库存项，不生成掉落；重生重新初始化默认弹药。服务器每次开火从 Inventory 扣一发，换弹由 Combat 计时、Inventory 转移备弹；当前没有预测。
+- 死亡销毁权威武器并移除对应库存项，不生成掉落；重生重新初始化默认弹药。服务器每次开火从 Inventory 扣一发，换弹由 Combat 计时、Inventory 补满弹匣；备弹无限，不保存或消耗备弹数量，当前没有预测。
 - 客户端解绑或死亡只隐藏/解绑表现，不主动清空服务器复制的 `EquippedWeapon`、`EquippedItemId`；恢复存活状态后刷新表现。Actor 的 WeaponDefinition 与装备指针的复制可先后到达，由 Equipment 在 Pawn ready 且存活时重试附着。
 - Equipment 用 `EquippedItemId` 直接查询 Inventory 条目；开火读取条目的 WeaponDataAsset 和当前弹药，枪口来自 Equipment Actor。没有 WeaponInstance 或弹药变化驱动的缓存刷新链路；未来条目扩展仍以 ItemId 和 Inventory 数组为基础。
 - 拾取、切槽位、丢弃、掉落表现与 Projectile 的代码、对应 Blueprint 和废弃输入已移除。Lobby 与 GameLevel1 中的旧拾取武器已清除，Steam Session/邀请/加入与必要 Travel 保留。

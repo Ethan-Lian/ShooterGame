@@ -123,7 +123,8 @@ void UShooterMatchWidget::RefreshResultsDisplay(const AShooterGameState* State)
 {
 	const bool bMatchEnded =
 		State != nullptr
-		&& State->GetMatchPhase() == MatchState::WaitingPostMatch;
+		&& (State->GetMatchPhase() == MatchState::WaitingPostMatch
+			|| State->GetMatchPhase() == MatchState::LeavingMap);
 
 	MatchPanel->SetVisibility(
 		bMatchEnded

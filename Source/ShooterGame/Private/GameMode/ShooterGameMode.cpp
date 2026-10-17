@@ -1,8 +1,13 @@
 #include "GameMode/ShooterGameMode.h"
+
+#include "EngineUtils.h"
 #include "Character/PlayerCharacter.h"
 #include "Controller/ShooterPlayerController.h"
 #include "Engine/World.h"
 #include "GameFramework/Controller.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerStart.h"
+#include "GameFramework/PlayerState.h"
 #include "Messages/ShooterGameplayMessageSubsystem.h"
 #include "TimerManager.h"
 #include "PlayerState/ShooterPlayerState.h"
@@ -12,6 +17,7 @@
 #include "AbilitySystem/ShooterAbilitySystemComponent.h"
 #include "Components/ShooterCombatComponent.h"
 #include "Components/ShooterMovementStateComponent.h"
+#include "Engine/PlayerStartPIE.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 AShooterGameMode::AShooterGameMode()
@@ -22,8 +28,38 @@ AShooterGameMode::AShooterGameMode()
 
 	GameStateClass = AShooterGameState::StaticClass();
 
-	// This first slice uses automatic start; the travel readiness gate comes next.
+	// ReadyToStartMatch supplies the loading gate instead of a manual StartMatch call.
 	bDelayedStart = false;
+}
+
+bool AShooterGameMode::TryRestartMatch(APlayerController* RequestingController)
+{
+	if (RequestingController == nullptr
+		|| RequestingController->GetWorld() != GetWorld()
+		|| !RequestingController->HasAuthority()
+		|| !RequestingController->IsLocalPlayerController()
+		|| GetMatchState() != MatchState::WaitingPostMatch)
+	{
+		return false;
+	}
+
+	const AShooterGameState* State = GetGameState<AShooterGameState>();
+
+	if (State == nullptr || !State->GetMatchResults().bIsFinalized)
+	{
+		return false;
+	}
+
+	RestartGame();
+
+	return GetMatchState() == MatchState::LeavingMap;
+}
+
+void AShooterGameMode::RestartGame()
+{
+	// Set on the current instance so Blueprint defaults cannot select hard travel.
+	bUseSeamlessTravel = true;
+	Super::RestartGame();
 }
 
 void AShooterGameMode::BeginPlay()
@@ -140,6 +176,7 @@ void AShooterGameMode::HandleRespawnTimerExpired(TWeakObjectPtr<AController> Con
 
 void AShooterGameMode::HandleMatchHasStarted()
 {
+	AssignRoundSpawnPoints();
 	Super::HandleMatchHasStarted();
 
 	AShooterGameState* ShooterGameState = GetGameState<AShooterGameState>();
@@ -161,6 +198,23 @@ void AShooterGameMode::HandleMatchHasStarted()
 	ScoringPlayer.Reset();
 	LastScoringServerTime = ServerTime;
 	RefreshControlPointScoring();
+}
+
+bool AShooterGameMode::ReadyToStartMatch_Implementation()
+{
+	if (GetMatchState() != MatchState::WaitingToStart
+		|| NumPlayers <= 0
+		|| NumPlayers > MaxRoundPlayers
+		|| NumTravellingPlayers != 0)
+	{
+		return false;
+	}
+
+	TArray<APlayerController*> Players;
+	TArray<APlayerStart*> StartPoints;
+	CollectRoundSpawnData(Players, StartPoints);
+
+	return Players.Num() == NumPlayers && StartPoints.Num() >= Players.Num();
 }
 
 bool AShooterGameMode::ReadyToEndMatch_Implementation()
@@ -400,4 +454,73 @@ double AShooterGameMode::GetScoringServerTime() const
 	const AShooterGameState* ShooterGameState = GetGameState<AShooterGameState>();
 	check(ShooterGameState);
 	return FMath::Min(ShooterGameState->GetServerWorldTimeSeconds(), ShooterGameState->GetMatchEndServerTime());
+}
+
+void AShooterGameMode::CollectRoundSpawnData(
+	TArray<APlayerController*>& OutPlayers,
+	TArray<APlayerStart*>& OutStartPoints) const
+{
+	OutPlayers.Reset();
+	OutStartPoints.Reset();
+
+	UWorld* World = GetWorld();
+
+	for (FConstPlayerControllerIterator It =
+		World->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* Controller = It->Get();
+		const APlayerState* PlayerState = Controller != nullptr
+			? Controller->GetPlayerState<APlayerState>()
+			: nullptr;
+
+		if (PlayerState != nullptr
+			&& !PlayerState->IsOnlyASpectator()
+			&& !PlayerState->IsInactive())
+		{
+			OutPlayers.Add(Controller);
+		}
+	}
+
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		APlayerStart* StartPoint = *It;
+
+		// Exclude temporary "Play From Here" starts.
+		if (!StartPoint->IsA<APlayerStartPIE>())
+		{
+			OutStartPoints.Add(StartPoint);
+		}
+	}
+}
+
+void AShooterGameMode::AssignRoundSpawnPoints()
+{
+	check(HasAuthority());
+
+	TArray<APlayerController*> Players;
+	TArray<APlayerStart*> StartPoints;
+	CollectRoundSpawnData(Players, StartPoints);
+
+	// ReadyToStartMatch guarantees these conditions before StartMatch.
+	check(Players.Num() > 0 && Players.Num() <= MaxRoundPlayers);
+	check(StartPoints.Num() >= Players.Num());
+
+	// Fisher-Yates shuffle: each ordering has the same probability.
+	for (int32 Index = StartPoints.Num() - 1; Index > 0; --Index)
+	{
+		const int32 RandomIndex = FMath::RandRange(0, Index);
+		StartPoints.Swap(Index, RandomIndex);
+	}
+
+	for (int32 Index = 0; Index < Players.Num(); ++Index)
+	{
+		Players[Index]->StartSpot = StartPoints[Index];
+
+		UE_LOG(
+			LogShooterGame,
+			Log,
+			TEXT("Round spawn: %s -> %s"),
+			*Players[Index]->GetPlayerState<APlayerState>()->GetPlayerName(),
+			*StartPoints[Index]->GetName());
+	}
 }

@@ -4,6 +4,7 @@
 #include "Character/PlayerCharacter.h"
 #include "Components/ShooterHealthComponent.h"
 #include "Controller/ShooterPlayerController.h"
+#include "HUD/ShooterAmmoWidget.h"
 #include "HUD/ShooterHealthWidget.h"
 #include "HUD/ShooterMatchWidget.h"
 #include "ShooterGame.h"
@@ -27,6 +28,14 @@ void AShooterHUD::SetObservedPawn(APawn* NewPawn)
 void AShooterHUD::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (PlayerOwner != nullptr && PlayerOwner->IsLocalController())
+	{
+		// A seamless-travel controller may still have the previous results screen's mode.
+		// Set this before Widget construction, which can immediately enter results again.
+		PlayerOwner->SetInputMode(FInputModeGameOnly());
+		PlayerOwner->SetShowMouseCursor(false);
+	}
 
 	CreateHUDWidgets();
 	SetObservedPawn(PlayerOwner != nullptr ? PlayerOwner->GetPawn() : nullptr);
@@ -75,6 +84,10 @@ void AShooterHUD::SetMatchEndedPresentation(bool bMatchEnded, UUserWidget* Focus
 	{
 		HealthWidgetInstance->SetVisibility(Visibility);
 	}
+	if (AmmoWidgetInstance != nullptr)
+	{
+		AmmoWidgetInstance->SetVisibility(Visibility);
+	}
 }
 
 void AShooterHUD::CreateHUDWidgets()
@@ -97,6 +110,24 @@ void AShooterHUD::CreateHUDWidgets()
 			if (MatchWidgetInstance != nullptr)
 			{
 				MatchWidgetInstance->AddToPlayerScreen();
+			}
+		}
+	}
+
+	if (AmmoWidgetInstance == nullptr)
+	{
+		if (AmmoWidgetClass == nullptr)
+		{
+			UE_LOG(LogShooterGame, Warning, TEXT("%s has no AmmoWidgetClass assigned."), *GetName());
+		}
+		else
+		{
+			AmmoWidgetInstance = CreateWidget<UShooterAmmoWidget>(PlayerOwner, AmmoWidgetClass);
+			if (AmmoWidgetInstance != nullptr)
+			{
+				AmmoWidgetInstance->AddToPlayerScreen();
+				AmmoWidgetInstance->SetVisibility(bMatchEndedPresentation
+					? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
 			}
 		}
 	}
@@ -137,6 +168,12 @@ void AShooterHUD::CreateHUDWidgets()
 
 void AShooterHUD::RemoveHUDWidgets()
 {
+	if (AmmoWidgetInstance != nullptr)
+	{
+		AmmoWidgetInstance->RemoveFromParent();
+		AmmoWidgetInstance = nullptr;
+	}
+
 	if (HealthWidgetInstance != nullptr)
 	{
 		HealthWidgetInstance->ClearHealthBinding();

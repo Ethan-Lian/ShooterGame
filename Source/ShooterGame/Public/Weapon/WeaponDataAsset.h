@@ -47,9 +47,6 @@ struct FWeaponAmmoConfig
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon", meta = (ClampMin = "0"))
 	int32 MagazineSize = 30;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon", meta = (ClampMin = "0"))
-	int32 InitialReserveAmmo = 90;
 };
 
 UCLASS(BlueprintType)

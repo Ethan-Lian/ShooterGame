@@ -10,6 +10,7 @@
 #include "Components/ShooterCombatComponent.h"
 #include "Components/ShooterMovementStateComponent.h"
 #include "GameFramework/Character.h"
+#include "GameMode/ShooterGameMode.h"
 #include "HUD/ShooterHUD.h"
 #include "Input/ShooterInputConfig.h"
 #include "Input/ShooterInputComponent.h"
@@ -165,6 +166,17 @@ bool AShooterPlayerController::IsControlledPawnDead() const
 {
 	const UAbilitySystemComponent* AbilitySystemComponent = GetControlledAbilitySystemComponent();
 	return AbilitySystemComponent != nullptr && AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead);
+}
+
+bool AShooterPlayerController::RequestPlayAgain()
+{
+	if (!HasAuthority() || !IsLocalPlayerController())
+	{
+		return false;
+	}
+
+	AShooterGameMode* GameMode = GetWorld()->GetAuthGameMode<AShooterGameMode>();
+	return GameMode != nullptr && GameMode->TryRestartMatch(this);
 }
 
 void AShooterPlayerController::ClearMatchInput()

@@ -4,6 +4,7 @@
 #include "ShooterHUD.generated.h"
 
 class APawn;
+class UShooterAmmoWidget;
 class UShooterHealthWidget;
 class UShooterMatchWidget;
 class UUserWidget;
@@ -37,6 +38,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "HUD")
 	TSubclassOf<UShooterMatchWidget> MatchWidgetClass;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "HUD")
+	TSubclassOf<UShooterAmmoWidget> AmmoWidgetClass;
+
 private:
 	// Creates all local screen-space HUD widgets once.
 	void CreateHUDWidgets();
@@ -58,6 +62,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UShooterMatchWidget> MatchWidgetInstance;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UShooterAmmoWidget> AmmoWidgetInstance;
 
 	bool bMatchEndedPresentation = false;
 };
