@@ -36,6 +36,7 @@ void UMultiplayerSessionFlowSubsystem::Initialize(FSubsystemCollectionBase& Coll
 	Sessions->MultiplayerOnCreateSessionCompleteDelegate.AddUObject(this, &ThisClass::HandleCreateSessionComplete);
 	Sessions->MultiplayerOnJoinSessionCompleteDelegate.AddUObject(this, &ThisClass::HandleJoinSessionComplete);
 	Sessions->MultiplayerOnDestroySessionCompleteDelegate.AddUObject(this, &ThisClass::HandleDestroySessionComplete);
+	Sessions->OnSessionJoiningClosed.AddUObject(this, &ThisClass::HandleSessionJoiningClosed);
 	Sessions->OnInviteAccepted.AddUObject(this, &ThisClass::HandleInviteAccepted);
 	BindLocalPlayerControllerChanged();
 	PostLoadMapHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &ThisClass::HandlePostLoadMap);
@@ -73,6 +74,7 @@ void UMultiplayerSessionFlowSubsystem::Deinitialize()
 		Sessions->MultiplayerOnCreateSessionCompleteDelegate.RemoveAll(this);
 		Sessions->MultiplayerOnJoinSessionCompleteDelegate.RemoveAll(this);
 		Sessions->MultiplayerOnDestroySessionCompleteDelegate.RemoveAll(this);
+		Sessions->OnSessionJoiningClosed.RemoveAll(this);
 		Sessions->OnInviteAccepted.RemoveAll(this);
 	}
 	PendingInvite = FOnlineSessionSearchResult();
@@ -85,6 +87,7 @@ bool UMultiplayerSessionFlowSubsystem::IsBusy() const
 	return bDeinitializing || bRecoveryRequested || (Sessions && Sessions->IsBusy())
 		|| State == EMultiplayerSessionFlowState::CreatingSession
 		|| State == EMultiplayerSessionFlowState::JoiningSession
+		|| State == EMultiplayerSessionFlowState::StartingGame
 		|| State == EMultiplayerSessionFlowState::Traveling
 		|| State == EMultiplayerSessionFlowState::Leaving;
 }
@@ -153,6 +156,8 @@ void UMultiplayerSessionFlowSubsystem::HandleCreateSessionComplete(bool bWasSucc
 		RequestRecovery(LOCTEXT("HostWorldMissing", "The local world is unavailable after session creation."));
 		return;
 	}
+	// Only a newly created room reopens admission; round restarts keep it closed.
+	bAcceptingNewPlayers = true;
 	BeginTravel(ETravelDestination::Lobby, HostedLobbyMap);
 	if (!World->ServerTravel(HostedLobbyMap + TEXT("?listen"))
 		&& State == EMultiplayerSessionFlowState::Traveling && !bRecoveryRequested)
@@ -181,25 +186,58 @@ bool UMultiplayerSessionFlowSubsystem::StartHostedGame()
 		return false;
 	}
 	LastError = FText::GetEmpty();
-	const bool bPreviousSeamlessTravel = GameMode->bUseSeamlessTravel;
-	GameMode->bUseSeamlessTravel = true;
-	BeginTravel(ETravelDestination::Game, MapPath);
-	if (!World->ServerTravel(MapPath) && State == EMultiplayerSessionFlowState::Traveling && !bRecoveryRequested)
+	bAcceptingNewPlayers = false;
+	ExpectedMap = MapPath;
+	UE_LOG(LogMultiplayerSessionFlow, Log, TEXT("New player admission closed; updating the online session before gameplay travel."));
+	SetState(EMultiplayerSessionFlowState::StartingGame);
+	// State observers can synchronously request recovery or tear down the subsystem.
+	if (bDeinitializing || bRecoveryRequested || State != EMultiplayerSessionFlowState::StartingGame)
 	{
-		GameMode->bUseSeamlessTravel = bPreviousSeamlessTravel;
-		TravelDestination = ETravelDestination::None;
-		ExpectedMap.Reset();
-		ReportError(LOCTEXT("GameTravelRejected", "The game could not start. Try again from the lobby."));
-		SetState(EMultiplayerSessionFlowState::Lobby);
-		return false;
+		return true;
+	}
+	if (!Sessions->CloseSessionJoining())
+	{
+		RequestRecovery(LOCTEXT("CloseJoiningNotAdmitted", "Could not close room joining. Returning to the menu."));
 	}
 	return true;
+}
+
+void UMultiplayerSessionFlowSubsystem::HandleSessionJoiningClosed(bool bWasSuccessful)
+{
+	if (bDeinitializing || State != EMultiplayerSessionFlowState::StartingGame || ContinueRecoveryIfRequested())
+	{
+		return;
+	}
+	if (!bWasSuccessful)
+	{
+		RequestRecovery(LOCTEXT("CloseJoiningFailed", "Could not close room joining. Returning to the menu."));
+		return;
+	}
+	UWorld* World = GetWorld();
+	AGameModeBase* GameMode = World ? World->GetAuthGameMode() : nullptr;
+	if (!GameMode || !GetLocalPlayerController() || World->GetNetMode() != NM_ListenServer)
+	{
+		RequestRecovery(LOCTEXT("StartWorldMissing", "The host world is unavailable after closing room joining."));
+		return;
+	}
+	const FString MapPath = ExpectedMap;
+	GameMode->bUseSeamlessTravel = true;
+	BeginTravel(ETravelDestination::Game, MapPath);
+	if (bDeinitializing || bRecoveryRequested || State != EMultiplayerSessionFlowState::Traveling
+		|| TravelDestination != ETravelDestination::Game || GetWorld() != World)
+	{
+		return;
+	}
+	if (!World->ServerTravel(MapPath) && State == EMultiplayerSessionFlowState::Traveling && !bRecoveryRequested)
+	{
+		RequestRecovery(LOCTEXT("GameTravelRejected", "The game could not start. Returning to the menu."));
+	}
 }
 
 bool UMultiplayerSessionFlowSubsystem::CanInviteFriends() const
 {
 	const UWorld* World = GetWorld();
-	return !IsBusy() && (State == EMultiplayerSessionFlowState::Lobby || State == EMultiplayerSessionFlowState::InGame)
+	return !IsBusy() && State == EMultiplayerSessionFlowState::Lobby && IsAcceptingNewPlayers()
 		&& World && World->GetNetMode() == NM_ListenServer && GetLocalPlayerController()
 		&& Sessions && Sessions->HasSession();
 }
@@ -323,6 +361,7 @@ bool UMultiplayerSessionFlowSubsystem::LeaveSession()
 
 void UMultiplayerSessionFlowSubsystem::BeginCleanup()
 {
+	bAcceptingNewPlayers = false;
 	bRecoveryRequested = false;
 	bSessionCleanupFailed = false;
 	TravelDestination = ETravelDestination::None;
@@ -409,6 +448,7 @@ void UMultiplayerSessionFlowSubsystem::RequestRecovery(const FText& Error)
 		return;
 	}
 	bRecoveryRequested = true;
+	bAcceptingNewPlayers = false;
 	PendingInvite = FOnlineSessionSearchResult();
 	AfterLeave = EAfterLeave::Menu;
 	ReportError(Error);

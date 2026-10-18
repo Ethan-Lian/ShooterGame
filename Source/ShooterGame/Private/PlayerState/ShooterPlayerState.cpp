@@ -84,6 +84,30 @@ void AShooterPlayerState::ResetCombatStateForRespawn()
 
 }
 
+void AShooterPlayerState::ResetMatchScore()
+{
+	check(HasAuthority());
+	ControlTimeRemainder = 0.0;
+	SetScore(0.f);
+	ForceNetUpdate();
+}
+
+void AShooterPlayerState::AddControlTime(double DeltaSeconds)
+{
+	check(HasAuthority());
+
+	const double TotalTime = ControlTimeRemainder + DeltaSeconds;
+	const double WholeSeconds = FMath::FloorToDouble(TotalTime);
+
+	ControlTimeRemainder = TotalTime - WholeSeconds;
+
+	if (WholeSeconds > 0.0)
+	{
+		SetScore(GetScore() + static_cast<float>(WholeSeconds));
+		ForceNetUpdate();
+	}
+}
+
 void AShooterPlayerState::GrantStartupAbilitiesIfNeeded()
 {
 	if (bStartupAbilitiesGranted || AbilitySystemComponent == nullptr)

@@ -3,7 +3,7 @@
 #include "GameplayCueNotify_Burst.h"
 #include "ShooterGameplayCueNotify_WeaponFire.generated.h"
 
-class AShooterWeaponBase;
+class AShooterWeaponEquipmentActor;
 class UStaticMeshComponent;
 
 UCLASS(Blueprintable)
@@ -17,5 +17,5 @@ public:
 	virtual bool OnExecute_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters) const override;
 
 private:
-	static bool ResolveWeaponCueTarget(const FGameplayCueParameters& Parameters, AShooterWeaponBase*& OutWeapon, UStaticMeshComponent*& OutWeaponMesh);
+	static bool ResolveWeaponCueTarget(const FGameplayCueParameters& Parameters, AShooterWeaponEquipmentActor*& OutWeapon, UStaticMeshComponent*& OutWeaponMesh);
 };

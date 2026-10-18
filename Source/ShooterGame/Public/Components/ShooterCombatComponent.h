@@ -43,6 +43,9 @@ public:
 	// Clears the local death latch when this component is reused by a live pawn.
 	void HandleOwnerRespawn();
 
+	// Clears weapon execution state without applying death or removing equipment.
+	void HandleMatchEnded();
+
 	// Clears transient input and targeting state when the owning Pawn is unpossessed or destroyed.
 	void UninitializeForPawn();
 

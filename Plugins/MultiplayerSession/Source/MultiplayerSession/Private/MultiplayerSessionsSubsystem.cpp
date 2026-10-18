@@ -1,9 +1,11 @@
 #include "MultiplayerSessionsSubsystem.h"
 
+#include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "Interfaces/OnlineExternalUIInterface.h"
 #include "Misc/App.h"
+#include "MultiplayerSessionFlowSubsystem.h"
 #include "Online.h"
 #include "Online/OnlineSessionNames.h"
 #include "OnlineSubsystem.h"
@@ -127,6 +129,36 @@ bool UMultiplayerSessionsSubsystem::DestroySession()
 	return true;
 }
 
+bool UMultiplayerSessionsSubsystem::CloseSessionJoining()
+{
+	const uint64 OperationId = BeginOperation(EOperation::Update);
+	if (OperationId == 0)
+	{
+		return false;
+	}
+	const IOnlineSessionPtr SessionInterface = OperationSessionInterface;
+	const FNamedOnlineSession* Session = SessionInterface->GetNamedSession(NAME_GameSession);
+	if (!Session)
+	{
+		ClearActiveOperation();
+		return false;
+	}
+
+	FOnlineSessionSettings Settings = Session->SessionSettings;
+	Settings.bAllowJoinInProgress = false;
+	Settings.bAllowJoinViaPresence = false;
+	Settings.bAllowJoinViaPresenceFriendsOnly = false;
+	Settings.bAllowInvites = false;
+	OperationDelegateHandle = SessionInterface->AddOnUpdateSessionCompleteDelegate_Handle(
+		FOnUpdateSessionCompleteDelegate::CreateUObject(this, &ThisClass::OnUpdateSessionComplete, OperationId));
+	const bool bStarted = SessionInterface->UpdateSession(NAME_GameSession, Settings, true);
+	if (!bStarted && OwnsOperation(EOperation::Update, OperationId))
+	{
+		OnUpdateSessionComplete(NAME_GameSession, false, OperationId);
+	}
+	return true;
+}
+
 uint64 UMultiplayerSessionsSubsystem::BeginOperation(EOperation Operation)
 {
 	if (bDeinitializing || IsBusy() || !RefreshOnlineSessionInterface())
@@ -158,6 +190,9 @@ void UMultiplayerSessionsSubsystem::ClearActiveOperation()
 			break;
 		case EOperation::Destroy:
 			OperationSessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(OperationDelegateHandle);
+			break;
+		case EOperation::Update:
+			OperationSessionInterface->ClearOnUpdateSessionCompleteDelegate_Handle(OperationDelegateHandle);
 			break;
 		default:
 			break;
@@ -205,6 +240,17 @@ void UMultiplayerSessionsSubsystem::OnDestroySessionComplete(FName SessionName, 
 	bWasSuccessful = bWasSuccessful && OperationSessionInterface->GetNamedSession(NAME_GameSession) == nullptr;
 	ClearActiveOperation();
 	MultiplayerOnDestroySessionCompleteDelegate.Broadcast(bWasSuccessful);
+}
+
+void UMultiplayerSessionsSubsystem::OnUpdateSessionComplete(FName SessionName, bool bWasSuccessful, uint64 OperationId)
+{
+	if (SessionName != NAME_GameSession || !OwnsOperation(EOperation::Update, OperationId))
+	{
+		return;
+	}
+	UE_LOG(LogMultiplayerSessions, Log, TEXT("Session joining closed: success=%d"), bWasSuccessful);
+	ClearActiveOperation();
+	OnSessionJoiningClosed.Broadcast(bWasSuccessful);
 }
 
 bool UMultiplayerSessionsSubsystem::HasSession() const
@@ -270,7 +316,8 @@ void UMultiplayerSessionsSubsystem::OnSessionUserInviteAccepted(bool bWasSuccess
 
 bool UMultiplayerSessionsSubsystem::ShowSteamInviteUI()
 {
-	if (IsBusy() || !RefreshOnlineSessionInterface() || !GetWorld())
+	const UMultiplayerSessionFlowSubsystem* Flow = GetGameInstance()->GetSubsystem<UMultiplayerSessionFlowSubsystem>();
+	if (!Flow || !Flow->CanInviteFriends() || !RefreshOnlineSessionInterface())
 	{
 		return false;
 	}

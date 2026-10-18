@@ -37,6 +37,15 @@ public:
 	// Clears death state and restores combat attributes before GameMode creates the next pawn.
 	void ResetCombatStateForRespawn();
 
+	// New match only. Respawn deliberately does not call this.
+	void ResetMatchScore();
+
+	// exchange elapsed control time for whole Score points.
+	void AddControlTime(double DeltaSeconds);
+
+	// Server-only fractional progress, in [0, 1) after AddControlTime.
+	double GetControlTimeRemainder() const { return ControlTimeRemainder; }
+
 protected:
 	// Lets Blueprint children override the startup fire ability if needed.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shooter|Abilities")
@@ -73,12 +82,14 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Shooter|Abilities")
 	TObjectPtr<UMovementAttributeSet> MovementAttributeSet;
 
-	// The long-lived weapon inventory component, which persists in the player state. It will be used by the future equipment system to manage the player's weapons and items.
-	// 长期武器库存组件,在玩家状态中持久存在.后续装备系统会使用它来管理玩家的武器和物品.
+	// The long-lived weapon inventory component, which persists in the player state. 
+	// It will be used by the future equipment system to manage the player's weapons and items.
 	UPROPERTY(VisibleAnywhere, Category = "Shooter|Inventory")
 	TObjectPtr<UShooterInventoryComponent> InventoryComponent;
 
 	bool bStartupAbilitiesGranted = false;
 	
 	bool bStartupEffectsApplied = false;
+
+	double ControlTimeRemainder = 0.0;
 };

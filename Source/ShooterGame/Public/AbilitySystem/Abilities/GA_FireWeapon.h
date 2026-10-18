@@ -4,11 +4,10 @@
 #include "GA_FireWeapon.generated.h"
 
 class APawn;
-class AShooterWeaponBase;
+class AShooterWeaponEquipmentActor;
 class UAbilityTask_WaitDelay;
 class UAbilitySystemComponent;
 class UGameplayEffect;
-class UShooterWeaponInstance;
 struct FWeaponFireConfig;
 
 UCLASS()
@@ -35,14 +34,11 @@ public:
 		bool bWasCancelled) override;
 
 private:
-	// Resolves the currently equipped logical weapon for the avatar.
-	UShooterWeaponInstance* GetEquippedWeaponInstance() const;
-
 	// Commits optional fire cost/cooldown before one shot leaves the weapon.
 	bool CommitFireShot();
 
 	// Validates the avatar/weapon chain and fires one Hitscan shot.
-	bool FireSingleShot();
+	bool FireSingleShot(float& OutFireInterval);
 
 	// Starts the next delay task for automatic fire.
 	void QueueNextShot(float FireInterval);
@@ -50,14 +46,14 @@ private:
 	// Resolves the center-screen aim point from the player's authoritative view.
 	bool ResolveAimPoint(
 		const APawn* ShooterPawn,
-		const AShooterWeaponBase* EquippedWeaponActor,
+		const AShooterWeaponEquipmentActor* EquippedWeaponActor,
 		const FWeaponFireConfig& FireConfig,
 		FVector& OutAimPoint) const;
 
 	// Applies immediate damage through a muzzle-to-aim hitscan trace.
 	void FireHitscanShot(
 		APawn* ShooterPawn,
-		AShooterWeaponBase* EquippedWeaponActor,
+		AShooterWeaponEquipmentActor* EquippedWeaponActor,
 		UAbilitySystemComponent* SourceAbilitySystem,
 		const FWeaponFireConfig& FireConfig,
 		const FTransform& MuzzleTransform);
@@ -65,7 +61,7 @@ private:
 	// Sends the existing fire cue with a direction that matches the gameplay shot.
 	void ExecuteFireCue(
 		APawn* ShooterPawn,
-		AShooterWeaponBase* EquippedWeaponActor,
+		AShooterWeaponEquipmentActor* EquippedWeaponActor,
 		UAbilitySystemComponent* SourceAbilitySystem,
 		const FVector& MuzzleLocation,
 		const FVector& ShotDirection) const;

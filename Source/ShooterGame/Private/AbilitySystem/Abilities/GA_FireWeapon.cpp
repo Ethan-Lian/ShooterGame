@@ -7,10 +7,8 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
 #include "Interfaces/ShooterEquipmentInterface.h"
-#include "Weapon/ShooterWeaponBase.h"
 #include "Weapon/ShooterWeaponEquipmentActor.h"
 #include "Weapon/WeaponDataAsset.h"
-#include "Weapon/ShooterWeaponInstance.h"
 #include "ShooterGame.h"
 #include "Engine/World.h"
 #include "Interfaces/ShooterCombatInterface.h"
@@ -37,21 +35,11 @@ void UGA_FireWeapon::ActivateAbility(
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	APawn* ShooterPawn = Cast<APawn>(GetAvatarActorFromActorInfo());
-	UShooterWeaponInstance* EquippedWeaponInstance = GetEquippedWeaponInstance();
-	if (ShooterPawn == nullptr || EquippedWeaponInstance == nullptr)
+	float FireInterval = 0.f;
+	if (FireSingleShot(FireInterval) && IsActive())
 	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-		return;
+		QueueNextShot(FireInterval);
 	}
-
-	if (!FireSingleShot())
-	{
-		return;
-	}
-
-	const float FireInterval = FMath::Max(0.01f, EquippedWeaponInstance->GetFireConfig().FireInterval);
-	QueueNextShot(FireInterval);
 }
 
 void UGA_FireWeapon::EndAbility(
@@ -70,16 +58,6 @@ void UGA_FireWeapon::EndAbility(
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
-UShooterWeaponInstance* UGA_FireWeapon::GetEquippedWeaponInstance() const
-{
-	const APawn* ShooterPawn = Cast<APawn>(GetAvatarActorFromActorInfo());
-	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(ShooterPawn);
-	const UShooterWeaponEquipmentComponent* EquipmentComponent = EquipmentOwner != nullptr
-		? EquipmentOwner->GetShooterWeaponEquipmentComponent()
-		: nullptr;
-	return EquipmentComponent != nullptr ? EquipmentComponent->GetEquippedWeaponInstance() : nullptr;
-}
-
 bool UGA_FireWeapon::CommitFireShot()
 {
 	CostGameplayEffectClass = FireCostGameplayEffectClass;
@@ -95,24 +73,27 @@ bool UGA_FireWeapon::CommitFireShot()
 	return true;
 }
 
-bool UGA_FireWeapon::FireSingleShot()
+bool UGA_FireWeapon::FireSingleShot(float& OutFireInterval)
 {
 	APawn* ShooterPawn = Cast<APawn>(GetAvatarActorFromActorInfo());
-	UShooterWeaponInstance* EquippedWeaponInstance = GetEquippedWeaponInstance();
-	AShooterWeaponBase* EquippedWeaponActor = EquippedWeaponInstance != nullptr
-		? EquippedWeaponInstance->GetEquippedWeaponActor()
-		: nullptr;
+	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(ShooterPawn);
+	const UShooterWeaponEquipmentComponent* Equipment = EquipmentOwner != nullptr ? EquipmentOwner->GetShooterWeaponEquipmentComponent() : nullptr;
+	UShooterInventoryComponent* Inventory = EquipmentOwner != nullptr ? EquipmentOwner->GetShooterInventoryComponent() : nullptr;
+	const FWeaponInventoryEntry* Entry = Equipment != nullptr ? Equipment->GetEquippedInventoryEntry() : nullptr;
+	AShooterWeaponEquipmentActor* EquippedWeaponActor = Equipment != nullptr ? Equipment->GetEquippedWeapon() : nullptr;
 	UAbilitySystemComponent* SourceAbilitySystem = GetAbilitySystemComponentFromActorInfo();
 	if (ShooterPawn == nullptr
-		|| EquippedWeaponInstance == nullptr
+		|| Entry == nullptr || !Entry->IsValid()
 		|| EquippedWeaponActor == nullptr
+		|| EquippedWeaponActor->GetWeaponDefinition() != Entry->WeaponDefinition
 		|| SourceAbilitySystem == nullptr)
 	{
 		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
 		return false;
 	}
 
-	const FWeaponFireConfig& FireConfig = EquippedWeaponInstance->GetFireConfig();
+	const int32 ItemId = Entry->ItemId;
+	const FWeaponFireConfig& FireConfig = Entry->WeaponDefinition->FireConfig;
 	if (FireConfig.DamageEffectClass == nullptr)
 	{
 		UE_LOG(LogShooterGame, Warning, TEXT("%s cannot fire because its weapon config is incomplete."), *ShooterPawn->GetName());
@@ -120,12 +101,9 @@ bool UGA_FireWeapon::FireSingleShot()
 		return false;
 	}
 
-	const IShooterEquipmentInterface* EquipmentOwner = Cast<IShooterEquipmentInterface>(ShooterPawn);
 	const IShooterCombatInterface* CombatOwner = Cast<IShooterCombatInterface>(ShooterPawn);
-	UShooterInventoryComponent* Inventory = EquipmentOwner != nullptr ? EquipmentOwner->GetShooterInventoryComponent() : nullptr;
 	const UShooterCombatComponent* Combat = CombatOwner != nullptr ? CombatOwner->GetShooterCombatComponent() : nullptr;
-	const FWeaponInventoryEntry* Entry = Inventory != nullptr ? Inventory->GetInventoryEntryByItemId(EquippedWeaponInstance->GetItemId()) : nullptr;
-	if (Entry == nullptr || Entry->CurrentMagazineAmmo <= 0 || (Combat != nullptr && Combat->IsReloading()))
+	if (Entry->CurrentMagazineAmmo <= 0 || (Combat != nullptr && (Combat->IsWeaponInteractionBlocked() || Combat->IsReloading())))
 	{
 		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
 		return false;
@@ -134,8 +112,11 @@ bool UGA_FireWeapon::FireSingleShot()
 	{
 		return false;
 	}
-	// Commit can invoke GAS callbacks; recheck the execution before mutating ammo.
-	if (!IsActive() || !Inventory->ConsumeMagazineRound(EquippedWeaponInstance->GetItemId()))
+	// Commit can invoke GAS callbacks. Do not retain the borrowed entry across it.
+	if (!IsActive() || GetAvatarActorFromActorInfo() != ShooterPawn
+		|| Equipment->GetEquippedItemId() != ItemId || Equipment->GetEquippedWeapon() != EquippedWeaponActor
+		|| (Combat != nullptr && (Combat->IsWeaponInteractionBlocked() || Combat->IsReloading()))
+		|| !Inventory->ConsumeMagazineRound(ItemId))
 	{
 		if (IsActive())
 		{
@@ -144,7 +125,8 @@ bool UGA_FireWeapon::FireSingleShot()
 		return false;
 	}
 
-	const FTransform MuzzleTransform = EquippedWeaponInstance->GetMuzzleTransform();
+	const FTransform MuzzleTransform = EquippedWeaponActor->GetMuzzleTransform();
+	OutFireInterval = FireConfig.FireInterval;
 
 	FireHitscanShot(ShooterPawn, EquippedWeaponActor, SourceAbilitySystem, FireConfig, MuzzleTransform);
 	return true;
@@ -171,7 +153,7 @@ void UGA_FireWeapon::QueueNextShot(float FireInterval)
 
 bool UGA_FireWeapon::ResolveAimPoint(
 	const APawn* ShooterPawn,
-	const AShooterWeaponBase* EquippedWeaponActor,
+	const AShooterWeaponEquipmentActor* EquippedWeaponActor,
 	const FWeaponFireConfig& FireConfig,
 	FVector& OutAimPoint) const
 {
@@ -218,7 +200,7 @@ bool UGA_FireWeapon::ResolveAimPoint(
 
 void UGA_FireWeapon::FireHitscanShot(
 	APawn* ShooterPawn,
-	AShooterWeaponBase* EquippedWeaponActor,
+	AShooterWeaponEquipmentActor* EquippedWeaponActor,
 	UAbilitySystemComponent* SourceAbilitySystem,
 	const FWeaponFireConfig& FireConfig,
 	const FTransform& MuzzleTransform)
@@ -301,7 +283,7 @@ void UGA_FireWeapon::FireHitscanShot(
 
 void UGA_FireWeapon::ExecuteFireCue(
 	APawn* ShooterPawn,
-	AShooterWeaponBase* EquippedWeaponActor,
+	AShooterWeaponEquipmentActor* EquippedWeaponActor,
 	UAbilitySystemComponent* SourceAbilitySystem,
 	const FVector& MuzzleLocation,
 	const FVector& ShotDirection) const
@@ -324,12 +306,9 @@ void UGA_FireWeapon::HandleRepeatedFire()
 {
 	FireDelayTask = nullptr;
 
-	UShooterWeaponInstance* EquippedWeaponInstance = GetEquippedWeaponInstance();
-	if (EquippedWeaponInstance == nullptr || !FireSingleShot())
+	float FireInterval = 0.f;
+	if (FireSingleShot(FireInterval) && IsActive())
 	{
-		return;
+		QueueNextShot(FireInterval);
 	}
-
-	const float FireInterval = FMath::Max(0.01f, EquippedWeaponInstance->GetFireConfig().FireInterval);
-	QueueNextShot(FireInterval);
 }

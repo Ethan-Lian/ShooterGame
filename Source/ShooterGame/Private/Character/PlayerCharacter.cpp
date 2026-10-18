@@ -24,7 +24,6 @@
 #include "PlayerState/ShooterPlayerState.h"
 #include "ShooterGame.h"
 #include "Weapon/ShooterWeaponEquipmentActor.h"
-#include "Weapon/ShooterWeaponInstance.h"
 
 APlayerCharacter::APlayerCharacter()
 {
@@ -37,6 +36,8 @@ APlayerCharacter::APlayerCharacter()
 
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
+	GetCharacterMovement()->SetCrouchedHalfHeight(60.f);
+	CrouchedEyeHeight = 48.f;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 720.f, 0.f);
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
@@ -127,11 +128,6 @@ UAbilitySystemComponent* APlayerCharacter::GetShooterAbilitySystemComponent() co
 AShooterWeaponEquipmentActor* APlayerCharacter::GetEquippedWeapon() const
 {
 	return WeaponEquipmentComponent != nullptr ? WeaponEquipmentComponent->GetEquippedWeapon() : nullptr;
-}
-
-UShooterWeaponInstance* APlayerCharacter::GetEquippedWeaponInstance() const
-{
-	return WeaponEquipmentComponent != nullptr ? WeaponEquipmentComponent->GetEquippedWeaponInstance() : nullptr;
 }
 
 UShooterInventoryComponent* APlayerCharacter::GetInventoryComponent() const
@@ -390,7 +386,31 @@ void APlayerCharacter::RestoreAlivePresentation()
 
 FVector APlayerCharacter::GetPawnViewLocation() const
 {
-	return GetActorLocation() + FVector(0.f, 0.f, BaseEyeHeight);
+	return GetActorLocation() + FVector(0.f, 0.f, BaseEyeHeight + CrouchCameraOffset);
+}
+
+void APlayerCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	const float PreviousEyeHeight = BaseEyeHeight;
+	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	CrouchCameraOffset += PreviousEyeHeight - BaseEyeHeight;
+	if (GetCharacterMovement()->bCrouchMaintainsBaseLocation)
+	{
+		CrouchCameraOffset += HalfHeightAdjust;
+	}
+	FollowCamera->SetRelativeLocation(FVector(0.f, 0.f, BaseEyeHeight + CrouchCameraOffset));
+}
+
+void APlayerCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	const float PreviousEyeHeight = BaseEyeHeight;
+	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	CrouchCameraOffset += PreviousEyeHeight - BaseEyeHeight;
+	if (GetCharacterMovement()->bCrouchMaintainsBaseLocation)
+	{
+		CrouchCameraOffset -= HalfHeightAdjust;
+	}
+	FollowCamera->SetRelativeLocation(FVector(0.f, 0.f, BaseEyeHeight + CrouchCameraOffset));
 }
 
 void APlayerCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
@@ -417,8 +437,10 @@ void APlayerCharacter::RefreshFirstPersonPresentation()
 void APlayerCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	// The server camera must also follow crouched eye height for aim traces.
-	FollowCamera->SetRelativeLocation(FVector(0.f, 0.f, BaseEyeHeight));
+	// Smooth only the stance offset, so falling and ordinary movement stay responsive.
+	// Update on the server too: its aim traces use this same camera position.
+	CrouchCameraOffset = FMath::FInterpTo(CrouchCameraOffset, 0.f, DeltaSeconds, CrouchCameraInterpSpeed);
+	FollowCamera->SetRelativeLocation(FVector(0.f, 0.f, BaseEyeHeight + CrouchCameraOffset));
 	if (!IsLocallyControlled() || bDeathHandled)
 	{
 		return;

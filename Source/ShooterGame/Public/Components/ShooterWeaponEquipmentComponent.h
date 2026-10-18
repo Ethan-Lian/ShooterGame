@@ -5,9 +5,7 @@
 
 class ACharacter;
 class AShooterWeaponEquipmentActor;
-class UShooterCombatComponent;
 class UShooterInventoryComponent;
-class UShooterWeaponInstance;
 class UWeaponDataAsset;
 struct FWeaponInventoryEntry;
 
@@ -26,9 +24,8 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Shooter|Combat")
 	AShooterWeaponEquipmentActor* GetEquippedWeapon() const { return EquippedWeapon; }
 
-	// Returns the logical weapon instance currently resolved from the equipped inventory entry.
-	UFUNCTION(BlueprintPure, Category = "Shooter|Combat")
-	UShooterWeaponInstance* GetEquippedWeaponInstance() const { return EquippedWeaponInstance; }
+	// Borrows the current Inventory entry; do not retain it across inventory mutations.
+	const FWeaponInventoryEntry* GetEquippedInventoryEntry() const;
 
 	// Returns the logical inventory item currently equipped by this pawn.
 	UFUNCTION(BlueprintPure, Category = "Shooter|Combat")
@@ -37,13 +34,10 @@ public:
 	// Destroys the equipped weapon and removes its inventory entry without dropping it.
 	bool HandleOwnerDeath();
 
-	// Rebuilds owner-side cached weapon state after replicated inventory changes arrive.
-	void HandleInventoryReplicated();
-
 	// Grants/equips the default weapon on authority; clients only refresh presentation.
 	void RefreshEquipmentForPawnReady();
 
-	// Clears Pawn-scoped presentation and transient instance state without changing PlayerState inventory.
+	// Clears Pawn-scoped presentation without changing PlayerState inventory.
 	void UninitializeForPawn();
 
 private:
@@ -54,13 +48,10 @@ private:
 	// Resolves the owning character used for attachment and character movement data.
 	ACharacter* GetOwningCharacter() const;
 
-	// Resolves the combat component that owns combat-state blocking rules.
-	UShooterCombatComponent* GetOwningCombatComponent() const;
-
 	// Resolves the PlayerState-owned inventory component that owns logical weapons.
 	UShooterInventoryComponent* GetOwningInventoryComponent() const;
 
-	// Returns whether equipment interactions should currently be blocked.
+	// Checks owner/death state independently of match phase; readiness is checked before initialization.
 	bool IsEquipmentInteractionBlocked() const;
 
 	// Equips the logical inventory entry addressed by its stable item id.
@@ -75,30 +66,15 @@ private:
 	// Removes a stale local equipped presentation when replicated state has moved on.
 	void ClearLocalEquippedWeaponPresentation(AShooterWeaponEquipmentActor* WeaponToClear = nullptr);
 
-	// Rebuilds the logical weapon instance from the current equipped inventory item.
-	void RefreshEquippedWeaponInstance();
-
-	// Clears the logical weapon instance when nothing is equipped.
-	void ClearEquippedWeaponInstance();
-
 	// Reattaches the replicated weapon pointer on remote clients.
 	UFUNCTION()
 	void OnRep_EquippedWeapon(AShooterWeaponEquipmentActor* OldEquippedWeapon);
-
-	// Rebuilds the owner-side logical weapon view when the equipped item id changes.
-	UFUNCTION()
-	void OnRep_EquippedItemId();
 
 	// Replicated weapon pointer used by remote attachment logic and weapon presentation.
 	UPROPERTY(ReplicatedUsing = OnRep_EquippedWeapon, VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<AShooterWeaponEquipmentActor> EquippedWeapon;
 
 	// Replicated logical inventory id currently equipped by this pawn.
-	UPROPERTY(ReplicatedUsing = OnRep_EquippedItemId, VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
 	int32 EquippedItemId = INDEX_NONE;
-
-	// Transient logical weapon instance rebuilt from inventory truth for local gameplay queries.
-	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UShooterWeaponInstance> EquippedWeaponInstance;
-
 };

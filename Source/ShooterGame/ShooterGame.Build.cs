@@ -21,7 +21,7 @@ public class ShooterGame : ModuleRules
 			"Niagara"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { });
+		PrivateDependencyModuleNames.AddRange(new string[] { "MultiplayerSession" });
 
 		PublicIncludePaths.AddRange(new string[] {
 			"ShooterGame"

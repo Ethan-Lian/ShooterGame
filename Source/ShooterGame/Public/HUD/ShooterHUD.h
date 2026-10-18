@@ -4,7 +4,9 @@
 #include "ShooterHUD.generated.h"
 
 class APawn;
+class UShooterAmmoWidget;
 class UShooterHealthWidget;
+class UShooterMatchWidget;
 class UUserWidget;
 
 UCLASS()
@@ -18,6 +20,9 @@ public:
 	// Rebinds local HUD data to the pawn currently owned by this player's controller.
 	void SetObservedPawn(APawn* NewPawn);
 
+	// Idempotent local presentation; does not decide or change match results.
+	void SetMatchEndedPresentation(bool bMatchEnded, UUserWidget* FocusWidget);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -29,6 +34,12 @@ protected:
 	// Blueprint widget class used for the local player's health display.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "HUD")
 	TSubclassOf<UShooterHealthWidget> HealthWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "HUD")
+	TSubclassOf<UShooterMatchWidget> MatchWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "HUD")
+	TSubclassOf<UShooterAmmoWidget> AmmoWidgetClass;
 
 private:
 	// Creates all local screen-space HUD widgets once.
@@ -48,4 +59,12 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<APawn> ObservedPawn;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UShooterMatchWidget> MatchWidgetInstance;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UShooterAmmoWidget> AmmoWidgetInstance;
+
+	bool bMatchEndedPresentation = false;
 };
