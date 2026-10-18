@@ -23,7 +23,8 @@ enum class EMultiplayerSessionFlowState : uint8
 	Lobby,
 	InGame,
 	Leaving,
-	CleanupFailed
+	CleanupFailed,
+	StartingGame
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMultiplayerSessionFlowStateChanged, EMultiplayerSessionFlowState, State, FText, Error);
@@ -67,6 +68,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Multiplayer Sessions|Flow")
 	bool CanInviteFriends() const;
 
+	// Server-local policy retained across gameplay travel and round restarts.
+	bool IsAcceptingNewPlayers() const { return !bDeinitializing && bAcceptingNewPlayers; }
+
 	UFUNCTION(BlueprintPure, Category = "Multiplayer Sessions|Flow")
 	bool HasPendingInvite() const { return PendingInvite.IsValid(); }
 
@@ -83,6 +87,7 @@ private:
 	void HandleCreateSessionComplete(bool bWasSuccessful);
 	void HandleJoinSessionComplete(EOnJoinSessionCompleteResult::Type Result, const FString& Address);
 	void HandleDestroySessionComplete(bool bWasSuccessful);
+	void HandleSessionJoiningClosed(bool bWasSuccessful);
 	void HandleInviteAccepted(bool bWasSuccessful, const FOnlineSessionSearchResult& InviteResult);
 	void HandlePostLoadMap(UWorld* LoadedWorld);
 	void BindLocalPlayerControllerChanged();
@@ -125,5 +130,6 @@ private:
 	FDelegateHandle TravelFailureHandle;
 	bool bRecoveryRequested = false;
 	bool bSessionCleanupFailed = false;
+	bool bAcceptingNewPlayers = true;
 	bool bDeinitializing = false;
 };

@@ -1,72 +1,44 @@
-# Match Lifecycle
+# 比赛生命周期
 
-## Scope
+## 阶段与计时
 
-Issue #3 第一小步：比赛阶段、180 秒计时、最小 HUD 显示。`AShooterGameMode : AGameMode` 与 `AShooterGameState : AGameState` 成对使用，沿用 UE MatchState。
-
-第一步原本使用引擎默认自动开局条件。第四步已由开发者补齐加载等待判断。第五步增加每局独占出生点分配与 3 秒重生：至少一人、最多四人、原成员加载完成且正式 PlayerStart 数量足够时才开局。关闭新玩家加入仍待完成。
-
-第二步已接入 [据点计分基础框架](control-point-scoring.md)：开局重置个人积分，死亡/退出/重生完成刷新据点，结束前结清截止前的独占时间并清理计分 Timer。三个核心函数已由开发者补齐，并确认计分测试通过。
-
-第三步的 [结算与 UI 框架](match-results.md) 增加结果快照复制、动作截止检查、可清理的重生 Timer 和结果 WBP 接口。开发者在 `fbdcf48` 补齐 EndMatch 编排、胜者计算与 UI 状态选择。
-
-第四步已接入 [重开流程](match-restart.md)：按钮请求、同地图 Seamless Travel 配置、旧界面清理和新 HUD 输入恢复。重开校验与加载等待条件已由开发者补齐，2026-10-15 开发者反馈测试完成；测试设备、人数与 Steam 拓扑未单独说明。
-
-## Ownership and Flow
+GameMode 决定规则，GameState 复制阶段和截止时间，沿用 UE MatchState。
 
 ```text
-AGameMode checks ReadyToStartMatch
-  -> StartMatch / InProgress
-  -> ShooterGameMode.HandleMatchHasStarted
-       -> shuffle map-authored PlayerStarts and assign one unique Controller.StartSpot each
-       -> Super: normal spawn and match-start work
-       -> GameState.SetMatchEndServerTime(ServerTime + MatchDuration)
-  -> AGameMode.Tick checks ReadyToEndMatch
-       -> deadline reached
-       -> EndMatch / WaitingPostMatch
-  -> AGameMode forwards MatchState to GameState
-  -> GameState replicates phase and end time to clients
-  -> local HUD reads the current snapshot and server time
+WaitingToStart → InProgress → WaitingPostMatch → LeavingMap
 ```
 
-- GameMode 只存在于服务器，拥有比赛规则和 `MatchDuration` 配置。GameState 保存唯一的结束时间和基类已有的阶段复制状态。PlayerState 继续拥有 ASC/Inventory，本小步没有增加积分字段。
-- `MatchEndServerTime` 使用 `UPROPERTY(Replicated)` 与 `GetLifetimeReplicatedProps` / `DOREPLIFETIME` 注册。覆盖复制列表时必须调用 `Super`，保留引擎 MatchState 和服务器时间等复制属性。
-- 剩余时间为 `Max(0, EndTime - GetServerWorldTimeSeconds())`。客户端使用引擎同步后的服务器时间估计值，不决定比赛胜负或结束；不能把它理解为所有机器严格同时或没有网络误差。
-- 阶段和结束时间没有复制到达顺序保证。`HasMatchEndTime` 区分尚未收到时间与真正的零秒，避免刚收到 `InProgress` 就显示比赛结束。
+- `ReadyToStartMatch` 要求处于 WaitingToStart、1–4 人、`NumTravellingPlayers == 0`，实际参赛 Controller 数与 NumPlayers 一致，正式 PlayerStart 不少于人数。
+- `HandleMatchHasStarted` 先分配出生点，再调用父类出生流程；随后设置截止时间，清零积分、据点余数和结果，启动计分。
+- 默认一局 180 秒，截止时间为服务器当前时间加 MatchDuration。到期后 `ReadyToEndMatch` 触发 [结算](match-results.md)。
+- 剩余时间为 `Max(0, MatchEndServerTime - GetServerWorldTimeSeconds())`，客户端只显示，不决定结束。
+- `IsMatchGameplayAllowed` 要求 InProgress、截止时间有效且未到期；开火、换弹、Sprint 和重生都走这个条件。
 
-## Round Spawn Assignment
+开始前关闭加入见 [联机流程](multiplayer-session.md)，下一局的对象重建见 [比赛重开](match-restart.md)。
 
-2026-10-15，已实现每局一次的服务器出生点分配。地图可提供四个或更多外围 PlayerStart；两名玩家随机使用其中两个不同点，四名玩家使用四个不同点。本局死亡后继续使用各自的 StartSpot，重开后重新抽签，允许再次抽到上一局的位置。
+## 出生与重生
 
-- `CollectRoundSpawnData` 按引用返回当前非 spectator-only、非 inactive 玩家 Controller 与地图正式 PlayerStart；排除 PIE 的临时 Play From Here 点。不复制这些临时数组，不另存玩家到出生点的映射表。
-- `ReadyToStartMatch` 仅验证 WaitingToStart、NumPlayers 为 1–4、NumTravellingPlayers 为零、实际参赛 Controller 数量一致、出生点数量不少于人数。条件不满足时保持等待，不在验证函数里随机或分配。
-- `AssignRoundSpawnPoints` 在 `HandleMatchHasStarted` 的父类调用前执行 Fisher-Yates shuffle，然后覆盖每名玩家的 `Controller.StartSpot`。父类随后通过默认 FindPlayerStart 和 RestartPlayer 生成 Pawn。
-- 现有死亡重生仍由 GameMode-owned Timer 驱动，原生 RespawnDelay 改为 3 秒。积分和独占时间余数不因死亡清零，武器与 ASC 沿用现有生命周期；不增加出生保护或安全距离评分。
-- 默认 FindPlayerStart 在 StartSpot 有效时复用它，因此本局不会因其他点变空而换点。Actor 的实际生成碰撞处理仍由引擎承担，固定点身份不承诺生成坐标完全不偏移。
-- Config/DefaultGame.ini 的 GameSession.MaxPlayers 设为 4；现有在线 Session 默认也是四个公共位置，包含房主。正式游戏从现有大厅进入，本步尚未关闭中途加入，未新增新玩家的局内分配流程。
+- 每局开始前收集非 spectator-only、非 inactive 玩家和正式 PlayerStart，排除 PIE 的 Play From Here 点。
+- Fisher-Yates 打乱出生点，每人分配不同的 `Controller.StartSpot`；本局死亡复用，重开重新抽。
+- 死亡后等 3 秒，UnPossess 并销毁旧 Pawn，重置战斗状态，再 RestartPlayer。身体绑定见 [Pawn 生命周期](pawn-lifecycle.md)。
+- GameMode 按 weak Controller 保存重生 Timer；替换请求、Logout、EndPlay 和比赛结束时清理，回调再检查动作许可与当前 Pawn。
+- 地图出生点不足就继续等待；固定出生点不保证生成碰撞调整后的坐标完全相同。
 
-Editor 中把正式出生点全部布置在外围，并确保角色 Capsule 能正常生成。本功能不根据岛屿几何推断外围位置，不修改 PlayerStart 坐标。出生点不足时不会开局；可在 ReadyToStartMatch 中查看实际人数与候选点数。
+## HUD
 
-验证从现有大厅进入：两人和四人各自分配不同点，连续死亡始终回到个人点，约 3 秒恢复，重开后再次分配。观察 `Round spawn: <name> -> <PlayerStart>` 日志；初始分配每局每名玩家一条。直接从 GameLevel 启动多个 PIE 窗口可能逐个登录并让首名玩家提前开局，不能代替原房间成员共同旅行的路径。
+`UShooterMatchWidget` 初始化时刷新，此后每帧读取当前 GameState，不缓存跨 World 引用。
+阶段和截止时间可能分开到达，`HasMatchEndTime` 为 false 时显示同步中。
 
-本步保留地图和 Blueprint 二进制资产在 Git 之外；构建与配置证据放在 Saved/RoundSpawns，不新增测试代码或 smoke-test scripts。
+布局在 `WBP_MatchStatus`，C++ 更新数据；结算界面见 [比赛结算](match-results.md)。
 
-2026-10-15，UE 5.8.2 Editor/Game Development 构建均通过，日志为 `Saved/RoundSpawns/Build-Editor.log` 与 `Build-Game.log`。BP_ShooterGameMode 编译、保存及独立新进程重新加载编译通过，确认实际 RespawnDelay 为 3 秒；记录为 `assets-configured.json`、`Assets-configure.log`、`Assets-fresh-load-complete.log`，原资产备份在同目录 `Before/`。全局唯一 warning 为引擎 MCP 插件的 EULA 提示。
+## 代码入口
 
-只读加载当前 GameLevel 确认有两个正式 PlayerStart（Actor 名称 PlayerStart_0 / PlayerStart_1），未改动或保存地图。当前布局可验证双人局；三至四人局需要开发者先补足外围出生点，否则按规则保持 WaitingToStart。以上是构建、配置和资产检查，新的多人分配、死亡固定点与重开随机结果仍待开发者运行验证。
+- [ShooterGameMode.cpp](../../Source/ShooterGame/Private/GameMode/ShooterGameMode.cpp)：开局条件、出生分配、计时和重生。
+- [ShooterGameState.cpp](../../Source/ShooterGame/Private/GameState/ShooterGameState.cpp)：复制状态和动作许可。
+- [ShooterMatchWidget.cpp](../../Source/ShooterGame/Private/HUD/ShooterMatchWidget.cpp)：比赛 HUD。
 
-## HUD and Assets
+## 踩坑/变更
 
-- `UShooterMatchWidget` 在 `NativeConstruct` 立即刷新，在 `NativeTick` 读取当前 GameState；不保存可能随旅行失效的 GameState 缓存，不额外绑定 Delegate。
-- WBP Designer 拥有布局，C++ 只更新文字。`BindWidget` 控件名为 `MatchPhaseText`、`MatchTimeText`、`ControlPointText`、`PlayerScoreText`，重命名时需要同时修改 C++ 契约。
-- HUD 只为本地 Controller 创建 Widget，独立于准星与血量 Widget 的配置；在 `EndPlay` 移除并释放自身持有的实例。
-- Widget 资产：`/Game/ShooterGameContent/HUD/WBP_MatchStatus`，父类 `UShooterMatchWidget`。
-- `/Game/ShooterGameContent/HUD/BP_ShooterHUD.MatchWidgetClass` 指向该 WBP。
-- `/Game/ShooterGameContent/GameMode/BP_ShooterGameMode` 使用 `AShooterGameState`，`MatchDuration = 180`，`bDelayedStart = false`，HUDClass 指向现有 `BP_ShooterHUD`。
-- 资产按项目规则不进入 Git；代码之外需要单独保留 WBP 与两个 Blueprint 的 class defaults 修改。
-
-## Validation
-
-2026-10-13，UE 5.8.2 Editor / Game Development 构建均通过，日志为 `Saved/MatchSkeleton/Build-Editor.log` 与 `Build-Game.log`。WBP、HUD 和 GameMode Blueprint 编译、保存后，在新进程中重新加载通过，0 errors；唯一 warning 来自引擎 ModelContextProtocol 插件的 EULA 提示，非项目 Blueprint 错误。证据为 `Assets-fresh-load.log` 与 `assets-authored.json`。
-
-多人 Gameplay 尚待开发者运行验证：主机和客户端显示比赛阶段与倒计时，默认 180 秒后都显示 `Match ended / 00:00`。可临时把 Blueprint MatchDuration 调成 10 秒检查阶段转换，完成后恢复 180 秒。构建和资产加载结果不代表多人运行或完整大厅旅行已通过。
+- 开局条件只检查，不在 `ReadyToStartMatch` 里随机或分配出生点。
+- 无缝旅行会清空远端连接的 ClientWorldPackageName，加载等待用引擎旅行人数，不用地图名。
+- 从游戏地图直接启动多窗口 PIE 可能逐个登录、提前开局；原成员一起进局走大厅旅行。

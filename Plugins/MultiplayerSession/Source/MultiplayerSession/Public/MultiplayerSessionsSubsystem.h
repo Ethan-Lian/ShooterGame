@@ -8,6 +8,7 @@
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnCreateSessionComplete, bool);
 DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnDestroySessionComplete, bool);
+DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnSessionJoiningClosed, bool);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FMultiplayerOnJoinSessionComplete, EOnJoinSessionCompleteResult::Type, const FString&);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FMultiplayerOnInviteAccepted, bool, const FOnlineSessionSearchResult&);
 
@@ -25,6 +26,7 @@ public:
 	bool CreateSession(int32 NumPublicConnections, const FString& MatchType);
 	bool JoinSession(const FOnlineSessionSearchResult& SessionResult);
 	bool DestroySession();
+	bool CloseSessionJoining();
 	bool IsBusy() const { return ActiveOperationId != 0; }
 	bool HasSession() const;
 	bool RefreshOnlineSessionInterface();
@@ -35,10 +37,11 @@ public:
 	FMultiplayerOnCreateSessionComplete MultiplayerOnCreateSessionCompleteDelegate;
 	FMultiplayerOnJoinSessionComplete MultiplayerOnJoinSessionCompleteDelegate;
 	FMultiplayerOnDestroySessionComplete MultiplayerOnDestroySessionCompleteDelegate;
+	FMultiplayerOnSessionJoiningClosed OnSessionJoiningClosed;
 	FMultiplayerOnInviteAccepted OnInviteAccepted;
 
 private:
-	enum class EOperation : uint8 { None, Create, Join, Destroy };
+	enum class EOperation : uint8 { None, Create, Join, Destroy, Update };
 
 	uint64 BeginOperation(EOperation Operation);
 	bool OwnsOperation(EOperation Operation, uint64 OperationId) const;
@@ -46,6 +49,7 @@ private:
 	void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful, uint64 OperationId);
 	void OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result, uint64 OperationId);
 	void OnDestroySessionComplete(FName SessionName, bool bWasSuccessful, uint64 OperationId);
+	void OnUpdateSessionComplete(FName SessionName, bool bWasSuccessful, uint64 OperationId);
 	void OnSessionUserInviteAccepted(bool bWasSuccessful, int32 ControllerId, FUniqueNetIdPtr UserId,
 		const FOnlineSessionSearchResult& InviteResult);
 	void ClearSessionInviteAcceptedDelegate();

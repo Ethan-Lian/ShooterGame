@@ -82,7 +82,9 @@ void ULobbyInvitePanelWidget::HandleInviteStatusChanged(FText Message)
 void ULobbyInvitePanelWidget::HandleFlowStateChanged(EMultiplayerSessionFlowState State, FText Error)
 {
 	const bool bHost = GetWorld()->GetNetMode() == NM_ListenServer;
-	RoomStatusText->SetText(Flow->IsBusy() ? LOCTEXT("Connecting", "正在处理，请稍候…")
+	RoomStatusText->SetText(State == EMultiplayerSessionFlowState::StartingGame
+		? LOCTEXT("StartingGame", "正在关闭房间加入并准备开始…")
+		: Flow->IsBusy() ? LOCTEXT("Connecting", "正在处理，请稍候…")
 		: bHost ? LOCTEXT("HostReady", "房间已就绪 · 邀请好友后即可开始")
 		: LOCTEXT("WaitForHost", "已加入房间 · 等待房主开始游戏"));
 	StatusText->SetText(!Error.IsEmpty() ? Error : bHost ? Invites->GetLobbyInviteStatus() : FText::GetEmpty());

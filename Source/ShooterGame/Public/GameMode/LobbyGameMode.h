@@ -8,4 +8,7 @@ UCLASS()
 class SHOOTERGAME_API ALobbyGameMode : public AGameMode
 {
 	GENERATED_BODY()
+
+public:
+	virtual TSubclassOf<AGameSession> GetGameSessionClass() const override;
 };

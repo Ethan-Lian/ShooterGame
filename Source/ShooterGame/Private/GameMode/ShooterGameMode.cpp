@@ -19,6 +19,7 @@
 #include "Components/ShooterMovementStateComponent.h"
 #include "Engine/PlayerStartPIE.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "MultiplayerGameSession.h"
 
 AShooterGameMode::AShooterGameMode()
 {
@@ -30,6 +31,11 @@ AShooterGameMode::AShooterGameMode()
 
 	// ReadyToStartMatch supplies the loading gate instead of a manual StartMatch call.
 	bDelayedStart = false;
+}
+
+TSubclassOf<AGameSession> AShooterGameMode::GetGameSessionClass() const
+{
+	return AMultiplayerGameSession::StaticClass();
 }
 
 bool AShooterGameMode::TryRestartMatch(APlayerController* RequestingController)

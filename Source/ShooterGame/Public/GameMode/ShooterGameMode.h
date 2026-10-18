@@ -22,6 +22,8 @@ public:
 	// Sets the project-default controller and pawn classes for gameplay maps.
 	AShooterGameMode();
 
+	virtual TSubclassOf<AGameSession> GetGameSessionClass() const override;
+
 	// Schedules an automatic respawn for a controller whose pawn has entered death.
 	void RequestPlayerRespawn(AController* Controller, APlayerCharacter* DeadCharacter);
 
